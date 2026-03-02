@@ -1,0 +1,67 @@
+# Proposal Agent v5.0 — Pipeline Configuration
+# 각 모듈을 ON/OFF 하여 파이프라인을 제어합니다.
+# enabled: false 로 설정하면 해당 단계를 건너뜁니다.
+# 환경변수 오버라이드: PIPELINE_STEP_{NAME}_ENABLED=true/false
+
+pipeline:
+  steps:
+    # Step 1: RFP 문서 파싱 (필수)
+    document_parsing:
+      enabled: true
+
+    # Step 2: RFP 분석 (Claude)
+    rfp_analysis:
+      enabled: true
+
+    # Step 3: IP 딥 리서치 + 웹 검색 (RFP 기반 시장/트렌드 조사)
+    ip_research:
+      enabled: true
+      web_search: true
+      community_analysis: true
+      competitor_analysis: true
+
+    # Step 4: Think Tank 검색 + 디자인 브리프 생성
+    # 역할: 수주 성공 레퍼런스 기반 디자인 규칙
+    #   - 레이아웃 배분 (complex_diagram 42%, image_focused 20% 등)
+    #   - Phase별 장표 수 (ACTION PLAN 40%, INSIGHT 10% 등)
+    #   - 배경 스케줄 (white/dark/light/gradient 패턴)
+    #   - 시각 밀도 목표 (이미지 25%, 도식 35%, 텍스트 20%)
+    #   - 컴포넌트 사용 빈도 (IMG_PH 18개, COLS 8개 등)
+    think_tank_retrieval:
+      enabled: true
+      top_k: 3
+      generate_design_brief: true
+
+    # Step 5: 콘텐츠 생성 (Claude - Impact-8 Framework)
+    # 싱크탱크 디자인 브리프가 있으면 장표 배분/레이아웃 규칙 자동 반영
+    content_generation:
+      enabled: true
+
+    # Step 6: 이미지 파이프라인 (IMG_PH → 실제 이미지 교체)
+    image_pipeline:
+      enabled: false
+      web_search: true
+      ai_generation: false
+      diagram_rendering: true
+
+    # Step 7: 검증
+    validation:
+      enabled: true
+
+    # Step 8: 디자인 에이전트 (싱크탱크 + Gamma 병합 → MergedDesignBrief)
+    # 싱크탱크 디자인 규칙이 1순위, Gamma 테마 추천이 2순위 보완
+    # slide_kit과 충돌 없음 (규칙 vs 도구 — 레이어 분리)
+    design_agent:
+      enabled: true
+
+    # Step 9: 디자인 브릿지 — Gamma 디자인 워싱 (선택적)
+    # PPTX 생성 후 Gamma MCP로 디자인 업그레이드
+    # 실제 Gamma API 호출은 Claude Code가 수행
+    design_bridge:
+      enabled: false
+      export_as: "pptx"
+
+  # Think Tank 전역 설정
+  think_tank:
+    enabled: true
+    db_path: "think_tank/references.db"
