@@ -26,6 +26,12 @@ desktop.ini
 # Environment
 .env
 
+# Google credentials
+config/google_service_account.json
+config/google_oauth_client.json
+config/google_token.pickle
+*service_account*.json
+
 # pytest
 .pytest_cache/
 
@@ -60,4 +66,5 @@ think_tank/*.sqlite
 # ──────────────────────────────────────
 # Claude Code 내부
 # ──────────────────────────────────────
-.claude/
+.claude/*
+!.claude/skills/
