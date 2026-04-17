@@ -464,7 +464,7 @@ def apply_palette(*, bg, text, key, sub1, sub2,
         "neon/mint":       sub2_c,
 
         "text/on_dark":    text_c,
-        "text/on_light":   bg_c,
+        "text/on_light":   text_c,
         "text/muted":      muted_c,
         "text/subtle":     muted_c,
         "text/accent":     key_c,
@@ -696,6 +696,20 @@ PALETTE_LIBRARY = {
         "tags": ["친환경", "에코", "ESG", "자연", "캠페인"],
         "fit": ["public", "marketing_pr"],
         "mood": "fresh, sustainable, optimistic",
+    },
+
+    # ── LAON 실전 수주 레퍼런스 ────────────────────────────────────
+    "vaetki_pastel": {
+        "name": "VAETKI Pastel",
+        "desc": "VAETKI Commerce 쇼케이스 실전 수주 팔레트 — 파스텔 그라디언트 에디토리얼",
+        "colors": {"bg": "#FFFFFF", "text": "#0D0D15",
+                    "key": "#6868F1", "sub1": "#DD6495", "sub2": "#B667DD"},
+        "tags": ["파스텔", "에디토리얼", "쇼케이스", "AI", "커머스",
+                  "인플루언서", "그라디언트", "라이트", "프리미엄"],
+        "fit": ["marketing_pr", "event"],
+        "mood": "elegant, modern, refined",
+        "gradient_bg": ("#DEE2FB", "#FFFFFF", "#C2CAF8"),   # 3-stop 파스텔
+        "gradient_key": ("#6868F1", "#DD6495"),               # 보라블루→핑크 헤드라인용
     },
 }
 
@@ -4096,17 +4110,28 @@ def gradient_text(run, color_start, color_end):
         return run
     ns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
     rPr = run._r.get_or_add_rPr()
-    # 기존 solidFill 제거
+    # 기존 fill 제거
     for tag in ('solidFill', 'gradFill', 'noFill'):
         for old in rPr.findall(f'{{{ns}}}{tag}'):
             rPr.remove(old)
-    gradFill = etree.SubElement(rPr, f'{{{ns}}}gradFill', flip='none',
-                                 rotWithShape='1')
+    # gradFill 생성 (아직 insert 안 함)
+    gradFill = etree.Element(f'{{{ns}}}gradFill', flip='none',
+                              rotWithShape='1')
     gsLst = etree.SubElement(gradFill, f'{{{ns}}}gsLst')
     gs1 = etree.SubElement(gsLst, f'{{{ns}}}gs', pos='0')
     etree.SubElement(gs1, f'{{{ns}}}srgbClr', val=_rgb_to_hex(color_start))
     gs2 = etree.SubElement(gsLst, f'{{{ns}}}gs', pos='100000')
     etree.SubElement(gs2, f'{{{ns}}}srgbClr', val=_rgb_to_hex(color_end))
+    # OOXML 순서: fill 요소는 latin/ea/cs보다 앞에 와야 함
+    # 첫 latin 또는 ea 또는 cs 엘리먼트 앞에 삽입
+    insert_idx = len(rPr)
+    for i, child in enumerate(rPr):
+        tag_name = child.tag.split('}')[-1]
+        if tag_name in ('latin', 'ea', 'cs', 'sym', 'hlinkClick',
+                         'hlinkMouseOver', 'rtl'):
+            insert_idx = i
+            break
+    rPr.insert(insert_idx, gradFill)
     etree.SubElement(gradFill, f'{{{ns}}}lin', ang='0', scaled='1')
     return run
 
@@ -5904,18 +5929,30 @@ def slide_cover_editorial(prs, *, ip_image=None, title="",
         subtitle_y = _sh * 0.48  # 3.6 / 7.5 = 0.48
         y_bot = _sh * 0.867      # 6.5 / 7.5
 
-    # 타이틀 — 48pt 고정
+    # 타이틀 — 48pt 고정 + 2줄 예측해서 높이 확보
+    title_sz = 48
+    title_lines = 1
     if title:
-        title_sz = 48
+        # 한글 char 48pt ≈ 0.48 inch. 폭 초과 시 2줄로
+        char_w_est = 0.48
+        if len(title) * char_w_est > CW_IN - 0.2:
+            title_lines = 2
+        title_h = (title_sz / 72) * 1.3 * title_lines + 0.1
         T(s, Inches(ML_IN), Inches(title_y), Inches(CW_IN),
-          Inches((title_sz / 72) * 1.35),
+          Inches(title_h),
           title, sz=title_sz,
           c=tok("text/on_dark"), b=True,
           al=PP_ALIGN.LEFT, fn=FONT_W["black"])
 
-    # 서브타이틀
+    # 서브타이틀 — 타이틀 하단 여유 간격 두고 배치
     if subtitle:
-        T(s, Inches(ML_IN), Inches(subtitle_y), Inches(CW_IN), Inches(0.45),
+        # title이 2줄이면 subtitle을 실제 title 하단으로 밀기
+        if title and title_lines == 2:
+            effective_subtitle_y = title_y + (title_sz / 72) * 1.3 * 2 + 0.2
+        else:
+            effective_subtitle_y = subtitle_y
+        T(s, Inches(ML_IN), Inches(effective_subtitle_y), Inches(CW_IN),
+          Inches(0.45),
           "— " + subtitle + " —", sz=SZ["sub_headline"],
           c=tok("secondary"),
           al=PP_ALIGN.LEFT, fn=FONT_W["semibold"])
@@ -5937,6 +5974,249 @@ def slide_cover_editorial(prs, *, ip_image=None, title="",
 # ───────────────────────────────────────────────────────────────
 #  v4.1 / 헬퍼
 # ───────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════════
+#  VAETKI / EDITORIAL LIGHT 패턴 (2026-04-17 수주작 흡수)
+# ═══════════════════════════════════════════════════════════════════════
+
+def bg_pastel_gradient(s, c1=None, c2=None, c3=None):
+    """3-stop 파스텔 그라디언트 배경 — VAETKI 시그니처.
+
+    기본값: DEE2FB (연보라) → FFFFFF (화이트 중앙) → C2CAF8 (연블루)
+    페이지 상하 극단이 컬러, 중앙이 화이트 → 부드러운 글로우 느낌
+
+    Args:
+        c1, c2, c3: 3-stop 색상 (RGBColor/hex). None이면 파스텔 기본.
+    """
+    if c1 is None:
+        c1 = RGBColor(222, 226, 251)   # DEE2FB
+    if c2 is None:
+        c2 = RGBColor(255, 255, 255)   # FFFFFF
+    if c3 is None:
+        c3 = RGBColor(194, 202, 248)   # C2CAF8
+
+    # 슬라이드 전체 덮는 rect + 3-stop 그라디언트
+    try:
+        from lxml import etree
+    except ImportError:
+        bg(s, c2)
+        return s
+
+    # 기존 slide <p:bg> 제거
+    clear_slide_bg(s)
+    ns_a = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    ns_p = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+    cSld = s._element.find(f'{{{ns_p}}}cSld')
+    bg_el = etree.SubElement(cSld, f'{{{ns_p}}}bg')
+    cSld.insert(0, bg_el)
+    bgPr = etree.SubElement(bg_el, f'{{{ns_p}}}bgPr')
+    gradFill = etree.SubElement(bgPr, f'{{{ns_a}}}gradFill',
+                                 flip='none', rotWithShape='1')
+    gsLst = etree.SubElement(gradFill, f'{{{ns_a}}}gsLst')
+    for pos, c in [(0, c1), (50000, c2), (100000, c3)]:
+        gs = etree.SubElement(gsLst, f'{{{ns_a}}}gs', pos=str(pos))
+        hex_val = (f"{c[0]:02X}{c[1]:02X}{c[2]:02X}"
+                    if isinstance(c, (tuple, list, RGBColor))
+                    else str(c).lstrip('#').upper())
+        etree.SubElement(gs, f'{{{ns_a}}}srgbClr', val=hex_val)
+    etree.SubElement(gradFill, f'{{{ns_a}}}lin',
+                      ang="5400000", scaled='1')   # 수직 (상→하)
+    return s
+
+
+def gradient_headline(s, l_in, t_in, w_in, h_in, text, *,
+                      c1=None, c2=None, sz_pt=36, align="center",
+                      font_weight="black"):
+    """2색 그라디언트 텍스트 헤드라인 — VAETKI 시그니처.
+
+    "몰입감을 극대화하는 공간 설계" 같은 브랜드 헤드라인이
+    보라블루→핑크로 흐르는 효과.
+
+    Args:
+        c1, c2: 그라디언트 시작/끝 색 (None이면 #6868F1 → #DD6495)
+    """
+    from pptx.enum.text import MSO_ANCHOR
+    c1 = c1 or RGBColor(104, 104, 241)   # 6868F1
+    c2 = c2 or RGBColor(221, 100, 149)   # DD6495
+
+    tb = s.shapes.add_textbox(Inches(l_in), Inches(t_in),
+                               Inches(w_in), Inches(h_in))
+    tf = tb.text_frame
+    tf.margin_left = tf.margin_right = Inches(0.05)
+    tf.margin_top = tf.margin_bottom = Inches(0.02)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.word_wrap = True
+
+    p = tf.paragraphs[0]
+    p.alignment = {
+        "left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER,
+        "right": PP_ALIGN.RIGHT,
+    }[align]
+    run = p.add_run()
+    run.text = text
+    run.font.name = FONT_W.get(font_weight, FONT_W["black"])
+    run.font.size = Pt(sz_pt)
+    run.font.bold = True
+
+    # 그라디언트 적용
+    gradient_text(run, c1, c2)
+    return tb
+
+
+def PARALLELOGRAM_ZONE(s, l_in, t_in, w_in, h_in, text, *,
+                        color=None, text_color=None, sz_pt=None,
+                        alpha=100):
+    """평행사변형 존 구분자 — VAETKI SPACE PLAN 스타일.
+
+    "로비", "종합게임시연실" 같은 공간 카테고리 라벨로 쓰이는
+    기울어진 큰 평행사변형.
+
+    Args:
+        color: 채우기 색 (파스텔 권장, 예: 연보라 B8B3ED / 연핑크 F2C4DA)
+        alpha: 0~100 불투명도 (기본 100 = 불투명)
+    """
+    from pptx.enum.text import MSO_ANCHOR
+    color = color or tok("brand/primary")
+    text_color = text_color or tok("text/on_light")
+    sz_pt = sz_pt or SZ["sub_headline"]
+
+    shape = s.shapes.add_shape(MSO_SHAPE.PARALLELOGRAM,
+                                Inches(l_in), Inches(t_in),
+                                Inches(w_in), Inches(h_in))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = color
+    shape.line.fill.background()
+    try:
+        shape.adjustments[0] = 0.15   # 살짝 기울어짐 (VAETKI 9p 스타일)
+    except Exception:
+        pass
+    if alpha < 100:
+        add_alpha(shape, 100 - alpha)
+
+    tf = shape.text_frame
+    tf.margin_left = Inches(0.2)
+    tf.margin_right = Inches(0.2)
+    tf.margin_top = Inches(0.05)
+    tf.margin_bottom = Inches(0.05)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = text
+    run.font.name = FONT_W["medium"]
+    run.font.size = Pt(sz_pt)
+    run.font.color.rgb = text_color
+    return shape
+
+
+def slide_divider_light(prs, eng_title, *, pg=None,
+                         gradient_bottom=True):
+    """라이트 섹션 디바이더 — VAETKI "SPACE PLANNING" 패턴.
+
+    - 좌상단 검정 영문 대형 텍스트 (여백 90%)
+    - 하단 파스텔 그라디언트 (옵션)
+    - 전체적으로 라이트 톤
+
+    레퍼런스 slide 8 "SPACE PLANNING" 스타일.
+    """
+    s = new_slide(prs)
+    if gradient_bottom:
+        bg_pastel_gradient(s)
+    else:
+        bg(s, tok("surface/base") if on_light_mode() else RGBColor(255, 255, 255))
+
+    # 좌상단 대형 검정 영문 (수직 중앙)
+    _sh = float(SH / 914400)
+    y_title = _sh * 0.42
+    title_h = _sh * 0.15
+    T(s, Inches(ML_IN), Inches(y_title), Inches(CW_IN), Inches(title_h),
+      eng_title.upper(), sz=48, c=RGBColor(0, 0, 0), b=True,
+      al=PP_ALIGN.LEFT, fn=FONT_W["black"])
+
+    if pg is not None:
+        T(s, Inches(float(SW/914400) - 0.85), Inches(_sh - 0.4),
+          Inches(0.7), Inches(0.3),
+          str(pg), sz=SZ["caption_sm"],
+          c=RGBColor(100, 100, 100), al=PP_ALIGN.RIGHT)
+    return s
+
+
+def on_light_mode():
+    """현재 적용된 팔레트가 라이트 모드인지 판정."""
+    try:
+        bg_c = tok("bg")
+        luma = int(bg_c[0]) * 0.299 + int(bg_c[1]) * 0.587 + int(bg_c[2]) * 0.114
+        return luma >= 180
+    except Exception:
+        return False
+
+
+def PAGE_HEADER_LIGHT(s, *, page_title="", pre="", headline="",
+                       gradient_headline_text=False,
+                       y_title=None, y_center_start=None):
+    """VAETKI 스타일 라이트 헤더 — 좌상단 라벨 + 중앙정렬 헤드라인.
+
+    - 좌상단 작은 검정 볼드 라벨 ("SPACE PLAN", "TIME TABLE" 등)
+    - 상단 구분선 (얇은 회색)
+    - 중앙 정렬 pre (회색 작은 글씨)
+    - 중앙 정렬 headline (옵션: 그라디언트 텍스트)
+
+    Args:
+        gradient_headline_text: True면 headline에 보라→핑크 그라디언트 적용
+    """
+    _sh = float(SH / 914400)
+    if y_title is None:
+        y_title = _sh * 0.07
+    if y_center_start is None:
+        y_center_start = _sh * 0.18
+
+    # 1. 좌상단 페이지 라벨 + 상단 구분선
+    if page_title:
+        T(s, Inches(ML_IN), Inches(y_title),
+          Inches(CW_IN * 0.5), Inches(0.35),
+          page_title.upper(), sz=SZ["sub_headline"], b=True,
+          c=RGBColor(0, 0, 0), fn=FONT_W["bold"],
+          al=PP_ALIGN.LEFT)
+        # 얇은 구분선
+        R(s, Inches(ML_IN), Inches(y_title + 0.5),
+          Inches(CW_IN), Inches(0.005),
+          RGBColor(200, 200, 205))
+
+    y = y_center_start
+
+    # 2. 중앙 정렬 pre
+    if pre:
+        pre_h = (SZ["pre_headline"] / 72) * 1.4
+        T(s, Inches(ML_IN), Inches(y), Inches(CW_IN),
+          Inches(pre_h + 0.1),
+          pre, sz=SZ["pre_headline"],
+          c=RGBColor(100, 100, 115), fn=FONT_W["regular"],
+          al=PP_ALIGN.CENTER)
+        y += pre_h + 0.1
+
+    # 3. 중앙 정렬 headline (그라디언트 옵션)
+    if headline:
+        hl_sz = 36
+        char_w = hl_sz * 0.056
+        while len(headline) * char_w > CW_IN * 0.95 and hl_sz > 20:
+            hl_sz -= 1
+            char_w = hl_sz * 0.056
+        hl_h = (hl_sz / 72) * 1.4
+        if gradient_headline_text:
+            gradient_headline(s, ML_IN, y, CW_IN, hl_h + 0.1,
+                               headline, sz_pt=hl_sz, align="center",
+                               font_weight="bold")
+        else:
+            T(s, Inches(ML_IN), Inches(y), Inches(CW_IN),
+              Inches(hl_h + 0.1),
+              headline, sz=hl_sz, b=True,
+              c=RGBColor(10, 10, 20), fn=FONT_W["bold"],
+              al=PP_ALIGN.CENTER)
+        y += hl_h + 0.15
+
+    return y
+
 
 def PAGE_HEADER(s, *, page_title="", pre="", headline="",
                   y_title=None, y_center_start=None,
