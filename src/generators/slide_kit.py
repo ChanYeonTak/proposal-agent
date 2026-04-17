@@ -698,6 +698,20 @@ PALETTE_LIBRARY = {
         "mood": "fresh, sustainable, optimistic",
     },
 
+    # ── 게임 IP 판타지 ─────────────────────────────────────────────
+    "fantasy_mystic": {
+        "name": "Fantasy Mystic",
+        "desc": "판타지 미스틱 — 마비노기/RPG류 게임 쇼케이스",
+        "colors": {"bg": "#14102A", "text": "#F5F0FF",
+                    "key": "#9D7DFF", "sub1": "#D4AF66", "sub2": "#F0C4E0"},
+        "tags": ["판타지", "게임", "RPG", "마법", "신비", "감성",
+                  "다크", "보라", "골드", "쇼케이스", "스토리"],
+        "fit": ["event", "marketing_pr"],
+        "mood": "mystical, enchanting, narrative",
+        "gradient_bg": ("#1A1333", "#14102A", "#0F0B24"),
+        "gradient_key": ("#9D7DFF", "#F0C4E0"),
+    },
+
     # ── LAON 실전 수주 레퍼런스 ────────────────────────────────────
     "vaetki_pastel": {
         "name": "VAETKI Pastel",
@@ -6154,34 +6168,48 @@ def on_light_mode():
 
 def PAGE_HEADER_LIGHT(s, *, page_title="", pre="", headline="",
                        gradient_headline_text=False,
-                       y_title=None, y_center_start=None):
-    """VAETKI 스타일 라이트 헤더 — 좌상단 라벨 + 중앙정렬 헤드라인.
+                       y_title=None, y_center_start=None,
+                       on_dark=None):
+    """VAETKI 스타일 헤더 — 좌상단 라벨 + 중앙정렬 헤드라인.
 
-    - 좌상단 작은 검정 볼드 라벨 ("SPACE PLAN", "TIME TABLE" 등)
-    - 상단 구분선 (얇은 회색)
-    - 중앙 정렬 pre (회색 작은 글씨)
+    - 좌상단 페이지 라벨 ("SPACE PLAN", "TIME TABLE" 등)
+    - 상단 구분선
+    - 중앙 정렬 pre (뮤티드)
     - 중앙 정렬 headline (옵션: 그라디언트 텍스트)
 
     Args:
-        gradient_headline_text: True면 headline에 보라→핑크 그라디언트 적용
+        gradient_headline_text: True면 headline에 브랜드 그라디언트 적용
+        on_dark: None=자동감지 / True=다크 배경용 / False=라이트 배경용
     """
     _sh = float(SH / 914400)
     if y_title is None:
         y_title = _sh * 0.07
     if y_center_start is None:
         y_center_start = _sh * 0.18
+    if on_dark is None:
+        on_dark = _detect_dark_bg(s)
+
+    # 텍스트 색상 팔레트 (다크/라이트 자동 스위치)
+    if on_dark:
+        page_title_color = tok("text/on_dark")   # 다크 배경 → 밝은 텍스트
+        divider_color = RGBColor(80, 70, 110)
+        pre_color = tok("text/muted")
+        headline_color = tok("text/on_dark")
+    else:
+        page_title_color = RGBColor(0, 0, 0)
+        divider_color = RGBColor(200, 200, 205)
+        pre_color = RGBColor(100, 100, 115)
+        headline_color = RGBColor(10, 10, 20)
 
     # 1. 좌상단 페이지 라벨 + 상단 구분선
     if page_title:
         T(s, Inches(ML_IN), Inches(y_title),
           Inches(CW_IN * 0.5), Inches(0.35),
           page_title.upper(), sz=SZ["sub_headline"], b=True,
-          c=RGBColor(0, 0, 0), fn=FONT_W["bold"],
+          c=page_title_color, fn=FONT_W["bold"],
           al=PP_ALIGN.LEFT)
-        # 얇은 구분선
         R(s, Inches(ML_IN), Inches(y_title + 0.5),
-          Inches(CW_IN), Inches(0.005),
-          RGBColor(200, 200, 205))
+          Inches(CW_IN), Inches(0.005), divider_color)
 
     y = y_center_start
 
@@ -6191,11 +6219,11 @@ def PAGE_HEADER_LIGHT(s, *, page_title="", pre="", headline="",
         T(s, Inches(ML_IN), Inches(y), Inches(CW_IN),
           Inches(pre_h + 0.1),
           pre, sz=SZ["pre_headline"],
-          c=RGBColor(100, 100, 115), fn=FONT_W["regular"],
+          c=pre_color, fn=FONT_W["regular"],
           al=PP_ALIGN.CENTER)
         y += pre_h + 0.1
 
-    # 3. 중앙 정렬 headline (그라디언트 옵션)
+    # 3. 중앙 정렬 headline
     if headline:
         hl_sz = 36
         char_w = hl_sz * 0.056
@@ -6211,7 +6239,7 @@ def PAGE_HEADER_LIGHT(s, *, page_title="", pre="", headline="",
             T(s, Inches(ML_IN), Inches(y), Inches(CW_IN),
               Inches(hl_h + 0.1),
               headline, sz=hl_sz, b=True,
-              c=RGBColor(10, 10, 20), fn=FONT_W["bold"],
+              c=headline_color, fn=FONT_W["bold"],
               al=PP_ALIGN.CENTER)
         y += hl_h + 0.15
 
