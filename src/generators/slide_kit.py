@@ -248,12 +248,247 @@ def new_presentation():
     return prs
 
 
-def new_slide(prs):
-    """빈 레이아웃 슬라이드 추가 (흰 배경)"""
-    s = prs.slides.add_slide(prs.slide_layouts[6])
-    s.background.fill.solid()
-    s.background.fill.fore_color.rgb = C["white"]
+def new_slide(prs, inherit_bg=None):
+    """빈 레이아웃 슬라이드 추가.
+
+    Args:
+        inherit_bg:
+            True  → 강제 마스터 배경 상속
+            False → 강제 흰 배경
+            None  → 자동 (마스터 배경이 설정되어 있으면 상속, 아니면 흰 배경)
+    """
+    # Blank 레이아웃 자동 선택 (기본 인덱스 6, prune 후엔 0)
+    blank_layout = None
+    for lo in prs.slide_layouts:
+        if lo.name.lower() in ("blank", "빈 화면", "빈화면"):
+            blank_layout = lo
+            break
+    if blank_layout is None:
+        # fallback: 마지막 레이아웃 (보통 Blank)
+        try:
+            blank_layout = prs.slide_layouts[6]
+        except IndexError:
+            blank_layout = prs.slide_layouts[-1] if len(prs.slide_layouts) else prs.slide_layouts[0]
+    s = prs.slides.add_slide(blank_layout)
+
+    # 자동 감지: 마스터에 커스텀 bg 요소가 있으면 상속
+    if inherit_bg is None:
+        try:
+            from lxml import etree
+            ns_p = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+            master = prs.slide_master
+            cSld = master._element.find(f'{{{ns_p}}}cSld')
+            bg_el = cSld.find(f'{{{ns_p}}}bg') if cSld is not None else None
+            inherit_bg = bg_el is not None and len(bg_el) > 0
+        except Exception:
+            inherit_bg = False
+
+    if inherit_bg:
+        clear_slide_bg(s)
+    else:
+        s.background.fill.solid()
+        s.background.fill.fore_color.rgb = C["white"]
     return s
+
+
+def _detect_dark_bg(s):
+    """슬라이드/마스터 XML에서 배경색을 읽어 어두운지 판정.
+
+    s.background 접근 없이 XML만 검사 → 상속 유지.
+    """
+    import re
+    ns_a = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    ns_p = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+
+    def _check_element(el):
+        """요소에서 solidFill srgbClr 찾기 → luma 체크."""
+        for sf in el.iter(f'{{{ns_a}}}solidFill'):
+            for c in sf.iter(f'{{{ns_a}}}srgbClr'):
+                val = c.get('val')
+                if val and len(val) == 6:
+                    r = int(val[0:2], 16)
+                    g = int(val[2:4], 16)
+                    b = int(val[4:6], 16)
+                    luma = r * 0.299 + g * 0.587 + b * 0.114
+                    return luma < 100
+        return None
+
+    # 1. 슬라이드 자체 bg 확인
+    try:
+        cSld = s._element.find(f'{{{ns_p}}}cSld')
+        if cSld is not None:
+            bg = cSld.find(f'{{{ns_p}}}bg')
+            if bg is not None:
+                r = _check_element(bg)
+                if r is not None:
+                    return r
+    except Exception:
+        pass
+    # 2. 마스터 bg 확인
+    try:
+        master = s.part.slide_layout.slide_master
+        m_cSld = master._element.find(f'{{{ns_p}}}cSld')
+        if m_cSld is not None:
+            m_bg = m_cSld.find(f'{{{ns_p}}}bg')
+            if m_bg is not None:
+                r = _check_element(m_bg)
+                if r is not None:
+                    return r
+    except Exception:
+        pass
+    return False
+
+
+def clear_slide_bg(s):
+    """슬라이드의 <p:bg> 요소 제거 — 마스터 배경 상속 활성화."""
+    try:
+        from lxml import etree
+        ns = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+        cSld = s._element.find(f'{{{ns}}}cSld')
+        if cSld is not None:
+            bg = cSld.find(f'{{{ns}}}bg')
+            if bg is not None:
+                cSld.remove(bg)
+    except Exception:
+        pass
+    return s
+
+
+def setup_master_background(prs, color=None, gradient=None):
+    """프레젠테이션 마스터 배경 설정 — 모든 슬라이드에 자동 적용.
+
+    마스터에 한 번 설정하면 inherit_bg=True로 생성한 슬라이드가 자동 상속.
+    개별 슬라이드는 여전히 bg()/gradient_bg()로 덮어쓰기 가능.
+
+    Args:
+        prs: Presentation 객체
+        color: 솔리드 배경색 (RGBColor 또는 (r,g,b))
+        gradient: (c1, c2) 튜플이면 그라디언트 배경 (상→하)
+
+    Example:
+        prs = new_presentation()
+        setup_master_background(prs, color=tok("surface/darker"))
+        # 이후 new_slide(prs, inherit_bg=True)로 만들면 자동 다크 배경
+    """
+    m = prs.slide_master
+    if gradient:
+        c1, c2 = gradient
+        gradient_shape(m.background._element.getparent().getparent(),
+                        c1, c2) if False else None
+        # 마스터 그라디언트는 XML 직접 편집 필요
+        _master_gradient(m, c1, c2)
+    elif color is not None:
+        if isinstance(color, tuple):
+            color = RGBColor(*color)
+        m.background.fill.solid()
+        m.background.fill.fore_color.rgb = color
+    return m
+
+
+def prune_slide_layouts(prs, keep_indexes=(6,)):
+    """기본 슬라이드 레이아웃 정리 — keep_indexes 외 레이아웃 제거.
+
+    python-pptx Presentation()은 기본 9개 레이아웃을 생성하지만 대부분 안 씀.
+    layout[6] (Blank)만 남기고 제거해서 "Insert new slide" UI 깔끔하게.
+
+    Args:
+        keep_indexes: 유지할 레이아웃 인덱스 튜플 (기본: (6,) = Blank만)
+    """
+    try:
+        from lxml import etree
+    except ImportError:
+        return prs
+    ns_p = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+    ns_r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+
+    master = prs.slide_master
+    master_el = master._element
+    sldLayoutIdLst = master_el.find(f'{{{ns_p}}}sldLayoutIdLst')
+    if sldLayoutIdLst is None:
+        return prs
+
+    layout_ids = list(sldLayoutIdLst.findall(f'{{{ns_p}}}sldLayoutId'))
+    keep_set = set(keep_indexes)
+
+    # 레이아웃 사용 여부 확인 — 슬라이드가 참조하는 레이아웃은 반드시 유지
+    used_layouts = set()
+    for slide in prs.slides:
+        used_layouts.add(slide.slide_layout.partname)
+
+    removed = 0
+    for i, layout_el in enumerate(layout_ids):
+        if i in keep_set:
+            continue
+        # 이 레이아웃이 실제 슬라이드에 사용 중인지 확인
+        rId = layout_el.get(f'{{{ns_r}}}id')
+        # master.part.rels에서 target 확인
+        try:
+            layout_part = master.part.related_parts.get(rId)
+            if layout_part and layout_part.partname in used_layouts:
+                continue   # 사용 중 → 유지
+        except Exception:
+            pass
+        # 제거: sldLayoutIdLst에서 엔트리, rels, part 순으로
+        try:
+            sldLayoutIdLst.remove(layout_el)
+            master.part.drop_rel(rId)
+            removed += 1
+        except Exception:
+            pass
+    return prs
+
+
+def setup_editorial_deck(prs, *, bg_color=None, gradient=None, prune=True):
+    """에디토리얼 다크 덱 원샷 설정.
+
+    - 마스터 배경 설정 (모든 슬라이드 자동 상속)
+    - 사용 안 하는 기본 레이아웃 제거 (옵션)
+
+    Args:
+        bg_color: 마스터 배경색. None이면 tok("surface/darker")
+        gradient: (c1, c2) 그라디언트 배경
+        prune: True면 Blank 레이아웃 외 제거
+
+    Example:
+        prs = new_presentation()
+        setup_editorial_deck(prs)
+        # 이후 new_slide()는 자동으로 마스터 배경 상속
+    """
+    if gradient is None and bg_color is None:
+        bg_color = tok("surface/darker")
+    setup_master_background(prs, color=bg_color, gradient=gradient)
+    if prune:
+        prune_slide_layouts(prs, keep_indexes=(6,))
+    return prs
+
+
+def _master_gradient(master, c1, c2, angle=5400000):
+    """마스터 배경에 그라디언트 설정 (XML 직접 조작)."""
+    try:
+        from lxml import etree
+    except ImportError:
+        return
+    ns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    ns_p = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+    cSld = master._element.find(f'{{{ns_p}}}cSld')
+    # bg 요소 확보
+    bg = cSld.find(f'{{{ns_p}}}bg')
+    if bg is None:
+        bg = etree.SubElement(cSld, f'{{{ns_p}}}bg')
+        cSld.insert(0, bg)
+    # 기존 자식 제거
+    for child in list(bg):
+        bg.remove(child)
+    bgPr = etree.SubElement(bg, f'{{{ns_p}}}bgPr')
+    gradFill = etree.SubElement(bgPr, f'{{{ns}}}gradFill',
+                                 flip='none', rotWithShape='1')
+    gsLst = etree.SubElement(gradFill, f'{{{ns}}}gsLst')
+    for pos, rgb in [(0, c1), (100000, c2)]:
+        gs = etree.SubElement(gsLst, f'{{{ns}}}gs', pos=str(pos))
+        hex_val = f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}" \
+                    if isinstance(rgb, tuple) else str(rgb).lstrip('#').upper()
+        etree.SubElement(gs, f'{{{ns}}}srgbClr', val=hex_val)
+    etree.SubElement(gradFill, f'{{{ns}}}lin', ang=str(angle), scaled='1')
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1865,16 +2100,10 @@ def IMG_PH(s, x, y, w, h, label="이미지 영역", on_dark=None):
         on_dark: True면 다크 배경용(어두운 회색 박스), False면 라이트 배경용.
                  None이면 자동 감지(슬라이드 배경 체크).
     """
-    # 자동 감지: 슬라이드 배경색이 어두우면 다크 모드
+    # 자동 감지: 슬라이드/마스터 XML에서 직접 배경색 추출
+    # (s.background 접근은 <p:bg> 요소를 강제 생성해서 마스터 상속을 깨뜨림 — 사용 금지)
     if on_dark is None:
-        try:
-            bg_rgb = s.background.fill.fore_color.rgb
-            # 배경 밝기 (luma)
-            luma = (int(bg_rgb[0]) * 0.299 + int(bg_rgb[1]) * 0.587
-                     + int(bg_rgb[2]) * 0.114)
-            on_dark = luma < 100
-        except Exception:
-            on_dark = False
+        on_dark = _detect_dark_bg(s)
 
     if on_dark:
         # 다크 배경용 — 카드 톤 박스 + 얇은 보더
@@ -5227,10 +5456,11 @@ def slide_cover_editorial(prs, *, ip_image=None, title="",
         subtitle_y = _sh * 0.48  # 3.6 / 7.5 = 0.48
         y_bot = _sh * 0.867      # 6.5 / 7.5
 
-    # 타이틀 — 길이 자동 스케일
+    # 타이틀 — 48pt 고정
     if title:
-        title_sz = 54 if len(title) <= 22 else (42 if len(title) <= 35 else 34)
-        T(s, Inches(ML_IN), Inches(title_y), Inches(CW_IN), Inches(1.1),
+        title_sz = 48
+        T(s, Inches(ML_IN), Inches(title_y), Inches(CW_IN),
+          Inches((title_sz / 72) * 1.35),
           title, sz=title_sz,
           c=tok("text/on_dark"), b=True,
           al=PP_ALIGN.LEFT, fn=FONT_W["black"])
@@ -5259,6 +5489,78 @@ def slide_cover_editorial(prs, *, ip_image=None, title="",
 # ───────────────────────────────────────────────────────────────
 #  v4.1 / 헬퍼
 # ───────────────────────────────────────────────────────────────
+
+def PAGE_HEADER(s, *, page_title="", pre="", headline="",
+                  y_title=None, y_center_start=None,
+                  on_dark=True, page_title_color=None):
+    """레퍼런스 공통 헤더 패턴 — 좌상단 페이지제목 + 중앙정렬 pre/headline.
+
+    Layout (NYPC 2016, MANAGEMENT, RECRUITMENT 등 레퍼런스 전반 패턴):
+
+        ┌─────────────────────────────────────────────┐
+        │  PAGE TITLE ← 좌상단 작게                     │
+        │                                              │
+        │         작은 리드 문장 (중앙 정렬)             │  ← pre
+        │      큰 헤드라인 (중앙 정렬, 볼드)              │  ← headline
+        │                                              │
+
+    Args:
+        page_title: 좌상단 페이지 제목 (예: "NYPC 2016")
+        pre: 중앙 정렬 리드 문장 (설명)
+        headline: 중앙 정렬 메인 헤드라인 (볼드)
+        y_title: 페이지 제목 Y (기본 SH*0.08)
+        y_center_start: pre 시작 Y (기본 SH*0.15)
+
+    Returns:
+        다음 요소 시작 Y (헤드라인 하단)
+    """
+    _sh = float(SH / 914400)
+    if y_title is None:
+        y_title = _sh * 0.08
+    if y_center_start is None:
+        y_center_start = _sh * 0.15
+
+    text_color = tok("text/on_dark") if on_dark else tok("text/on_light")
+    page_title_color = page_title_color or text_color
+    pre_color = tok("text/muted") if on_dark else tok("text/subtle")
+
+    # 1. 좌상단 페이지 제목 (작고 좌정렬)
+    if page_title:
+        T(s, Inches(ML_IN), Inches(y_title),
+          Inches(CW_IN * 0.5), Inches(0.35),
+          page_title, sz=SZ["sub_headline"], b=True,
+          c=page_title_color, fn=FONT_W["bold"],
+          al=PP_ALIGN.LEFT)
+
+    # 2. 중앙 정렬 pre (작은 리드)
+    y = y_center_start
+    if pre:
+        pre_h = (SZ["pre_headline"] / 72) * 1.4
+        T(s, Inches(ML_IN), Inches(y), Inches(CW_IN),
+          Inches(pre_h + 0.1),
+          pre, sz=SZ["pre_headline"],
+          c=pre_color, fn=FONT_W["regular"],
+          al=PP_ALIGN.CENTER)
+        y += pre_h + 0.1
+
+    # 3. 중앙 정렬 headline (큰 볼드) — 길이 기반 자동 폰트
+    if headline:
+        hl_sz = SZ["headline"]   # 36pt (scale된 값)
+        # 캔버스 폭 대비 폭 체크 (여유 있게 0.9 마진)
+        char_w = hl_sz * 0.056
+        while len(headline) * char_w > CW_IN * 0.95 and hl_sz > 20:
+            hl_sz -= 1
+            char_w = hl_sz * 0.056
+        hl_h = (hl_sz / 72) * 1.4
+        T(s, Inches(ML_IN), Inches(y), Inches(CW_IN),
+          Inches(hl_h + 0.1),
+          headline, sz=hl_sz, b=True,
+          c=text_color, fn=FONT_W["bold"],
+          al=PP_ALIGN.CENTER)
+        y += hl_h + 0.15
+
+    return y
+
 
 def BADGE(s, l_in, t_in, w_in, h_in, text, *,
            fill=None, text_color=None, sz_pt=None, bold=True,
