@@ -385,6 +385,454 @@ def setup_master_background(prs, color=None, gradient=None):
     return m
 
 
+def apply_palette(*, bg, text, key, sub1, sub2,
+                    card=None, text_muted=None):
+    """사용자 5색 팔레트 적용 — editorial_dark 테마 덮어쓰기.
+
+    Args:
+        bg:    배경 (hex "#RRGGBB" 또는 (r,g,b))
+        text:  본문 흰색/밝은색
+        key:   메인 키 컬러 (헤더 악센트, 뱃지)
+        sub1:  서브 컬러 1 (두번째 라벨)
+        sub2:  서브 컬러 2 (eyebrow/태그)
+        card:  카드 표면 (None이면 bg 밝기 +10)
+        text_muted: 뮤티드 텍스트 (None이면 text 40% 톤)
+
+    Example:
+        apply_palette(
+            bg   = "#1C1F28",
+            text = "#FFFFFF",
+            key  = "#5F70FC",
+            sub1 = "#6296FF",
+            sub2 = "#66FFFF",
+        )
+    """
+    def _to_rgb(v):
+        if isinstance(v, str):
+            v = v.lstrip("#").upper()
+            return RGBColor(int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
+        if isinstance(v, tuple):
+            return RGBColor(*v)
+        return v   # 이미 RGBColor
+
+    bg_c    = _to_rgb(bg)
+    text_c  = _to_rgb(text)
+    key_c   = _to_rgb(key)
+    sub1_c  = _to_rgb(sub1)
+    sub2_c  = _to_rgb(sub2)
+
+    # 카드 표면 기본값: bg보다 약간 밝게
+    if card is None:
+        card_c = RGBColor(min(255, bg_c[0]+13),
+                          min(255, bg_c[1]+15),
+                          min(255, bg_c[2]+18))
+    else:
+        card_c = _to_rgb(card)
+
+    # 뮤티드 텍스트 기본값: text와 bg의 중간
+    if text_muted is None:
+        muted_c = RGBColor(
+            (int(text_c[0]) + int(bg_c[0])*2) // 3,
+            (int(text_c[1]) + int(bg_c[1])*2) // 3,
+            (int(text_c[2]) + int(bg_c[2])*2) // 3,
+        )
+    else:
+        muted_c = _to_rgb(text_muted)
+
+    # 살짝 더 어두운 bg (darker surface)
+    darker_c = RGBColor(max(0, bg_c[0]-8),
+                        max(0, bg_c[1]-8),
+                        max(0, bg_c[2]-8))
+
+    # TOKENS 전체 업데이트
+    TOKENS.update({
+        "surface/base":    bg_c,
+        "surface/raised":  card_c,
+        "surface/dark":    card_c,
+        "surface/darker":  bg_c,        # 마스터 배경
+        "surface/overlay": darker_c,
+        "border/subtle":   card_c,
+        "border/dark":     card_c,
+
+        "brand/primary":   key_c,
+        "brand/secondary": sub1_c,
+        "brand/deep":      key_c,
+
+        "neon/cyan":       sub2_c,
+        "neon/aqua":       sub2_c,
+        "neon/electric":   sub2_c,
+        "neon/mint":       sub2_c,
+
+        "text/on_dark":    text_c,
+        "text/on_light":   bg_c,
+        "text/muted":      muted_c,
+        "text/subtle":     muted_c,
+        "text/accent":     key_c,
+
+        # aliases
+        "primary":    key_c,
+        "secondary":  sub2_c,
+        "accent":     sub1_c,
+        "text":       text_c,
+        "muted":      muted_c,
+        "bg":         bg_c,
+        "card":       card_c,
+        "border":     card_c,
+    })
+
+    # THEMES["editorial_dark"]도 업데이트 (apply_theme 시 C 동기)
+    THEMES["editorial_dark"] = {
+        "primary":   tuple(key_c),
+        "secondary": tuple(sub1_c),
+        "teal":      tuple(sub2_c),
+        "accent":    tuple(key_c),
+        "dark":      tuple(bg_c),
+        "light":     tuple(text_c),
+    }
+    apply_theme("editorial_dark")
+    return TOKENS
+
+
+def propose_palette():
+    """현재 팔레트 프로포절 출력 (콘솔). 새 덱 시작 시 호출."""
+    print("\n=== slide_kit 팔레트 제안 (editorial_dark 기본) ===")
+    print(f"  ① 배경   : #1C1F28  (딥 네이비)")
+    print(f"  ② 글자   : #FFFFFF  (흰색) + 뮤티드 자동")
+    print(f"  ③ 키     : #5F70FC  (브랜드 퍼플) ← 헤더 악센트/뱃지")
+    print(f"  ④ 서브1  : #6296FF  (브랜드 블루) ← 두번째 라벨")
+    print(f"  ⑤ 서브2  : #66FFFF  (사이언)       ← eyebrow/태그")
+    print(f"\n  적용: apply_palette(bg=, text=, key=, sub1=, sub2=)")
+    print(f"  기본 유지: apply_theme('editorial_dark')\n")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  큐레이션 팔레트 라이브러리 + 추천 시스템
+# ═══════════════════════════════════════════════════════════════════════
+
+PALETTE_LIBRARY = {
+    # ── DARK MODE ──────────────────────────────────────────────────
+    "editorial_dark": {
+        "name": "Editorial Dark",
+        "desc": "에디토리얼 다크 — MIT Tech Review / Stripe 톤 (기본)",
+        "colors": {"bg": "#1C1F28", "text": "#FFFFFF",
+                    "key": "#5F70FC", "sub1": "#6296FF", "sub2": "#66FFFF"},
+        "tags": ["다크", "에디토리얼", "테크", "모던", "게이밍", "IT"],
+        "fit": ["it_system", "marketing_pr", "event", "consulting"],
+        "mood": "professional, modern, focused",
+    },
+    "cyberpunk_neon": {
+        "name": "Cyberpunk Neon",
+        "desc": "사이버펑크 네온 — 게이밍/E스포츠",
+        "colors": {"bg": "#0A0A1F", "text": "#FFFFFF",
+                    "key": "#FF0080", "sub1": "#00FFE5", "sub2": "#F0FF00"},
+        "tags": ["네온", "게이밍", "이스포츠", "강렬", "미래"],
+        "fit": ["event", "marketing_pr"],
+        "mood": "bold, electric, futuristic",
+    },
+    "midnight_forest": {
+        "name": "Midnight Forest",
+        "desc": "미드나잇 포레스트 — 환경/지속가능성",
+        "colors": {"bg": "#0F1F1A", "text": "#F4F7F2",
+                    "key": "#47C472", "sub1": "#8BD8A8", "sub2": "#F4C542"},
+        "tags": ["자연", "환경", "친환경", "다크", "프리미엄"],
+        "fit": ["public", "consulting", "marketing_pr"],
+        "mood": "natural, sustainable, elegant",
+    },
+    "deep_luxury": {
+        "name": "Deep Luxury",
+        "desc": "딥 럭셔리 — 명품/프리미엄 브랜드",
+        "colors": {"bg": "#1A1022", "text": "#F5E6D3",
+                    "key": "#C9A961", "sub1": "#8B7ED8", "sub2": "#E8B4C8"},
+        "tags": ["럭셔리", "프리미엄", "명품", "다크", "엘레강스"],
+        "fit": ["marketing_pr", "consulting"],
+        "mood": "luxurious, premium, refined",
+    },
+    "finance_navy": {
+        "name": "Finance Navy",
+        "desc": "파이낸스 네이비 — 금융/컨설팅",
+        "colors": {"bg": "#0A1628", "text": "#FFFFFF",
+                    "key": "#3B82F6", "sub1": "#60A5FA", "sub2": "#FCD34D"},
+        "tags": ["금융", "컨설팅", "신뢰", "공식", "보수"],
+        "fit": ["consulting", "it_system", "public"],
+        "mood": "trustworthy, analytical, authoritative",
+    },
+
+    # ── LIGHT MODE ─────────────────────────────────────────────────
+    "minimal_light": {
+        "name": "Minimal Light",
+        "desc": "미니멀 라이트 — Apple/Notion 톤",
+        "colors": {"bg": "#FAFAFA", "text": "#1D1D1F",
+                    "key": "#0071E3", "sub1": "#34C759", "sub2": "#FF9500"},
+        "tags": ["미니멀", "라이트", "애플", "깔끔", "모던"],
+        "fit": ["it_system", "consulting", "marketing_pr"],
+        "mood": "clean, minimal, approachable",
+    },
+    "paper_warm": {
+        "name": "Paper Warm",
+        "desc": "페이퍼 웜 — 출판/에디토리얼 잡지",
+        "colors": {"bg": "#FAF5EE", "text": "#2B2118",
+                    "key": "#C94F3B", "sub1": "#D89E5B", "sub2": "#5F7A61"},
+        "tags": ["웜", "페이퍼", "에디토리얼", "출판", "라이프스타일"],
+        "fit": ["marketing_pr", "event"],
+        "mood": "warm, human, storytelling",
+    },
+    "nordic_cool": {
+        "name": "Nordic Cool",
+        "desc": "노르딕 쿨 — 북유럽 미니멀",
+        "colors": {"bg": "#F4F1EC", "text": "#2C3E50",
+                    "key": "#34495E", "sub1": "#7FB3D3", "sub2": "#E8B4A5"},
+        "tags": ["노르딕", "미니멀", "차분", "라이프스타일", "인테리어"],
+        "fit": ["marketing_pr", "consulting"],
+        "mood": "calm, thoughtful, understated",
+    },
+    "healthcare_mint": {
+        "name": "Healthcare Mint",
+        "desc": "헬스케어 민트 — 의료/웰니스",
+        "colors": {"bg": "#F0F9F7", "text": "#1A3A3A",
+                    "key": "#14B8A6", "sub1": "#7DD3C0", "sub2": "#F97316"},
+        "tags": ["의료", "헬스", "웰니스", "신뢰", "케어"],
+        "fit": ["public", "consulting"],
+        "mood": "healthy, trustworthy, caring",
+    },
+    "corporate_blue": {
+        "name": "Corporate Blue",
+        "desc": "코퍼레이트 블루 — 전통 기업",
+        "colors": {"bg": "#FFFFFF", "text": "#1E293B",
+                    "key": "#002C5F", "sub1": "#00AAD2", "sub2": "#E63312"},
+        "tags": ["기업", "전통", "공식", "신뢰", "보수"],
+        "fit": ["consulting", "it_system", "public"],
+        "mood": "reliable, professional, traditional",
+    },
+
+    # ── VIBRANT ────────────────────────────────────────────────────
+    "tech_gradient": {
+        "name": "Tech Gradient",
+        "desc": "테크 그라디언트 — 스타트업/SaaS",
+        "colors": {"bg": "#F8FAFF", "text": "#1E1B4B",
+                    "key": "#6366F1", "sub1": "#A855F7", "sub2": "#EC4899"},
+        "tags": ["테크", "스타트업", "그라디언트", "모던", "생동감"],
+        "fit": ["it_system", "marketing_pr"],
+        "mood": "innovative, dynamic, youthful",
+    },
+    "sunset_coral": {
+        "name": "Sunset Coral",
+        "desc": "선셋 코럴 — 크리에이티브/캠페인",
+        "colors": {"bg": "#FFF8F5", "text": "#2D1B1B",
+                    "key": "#FF6B6B", "sub1": "#FFB88C", "sub2": "#4ECDC4"},
+        "tags": ["캠페인", "크리에이티브", "웜", "생동감", "이벤트"],
+        "fit": ["event", "marketing_pr"],
+        "mood": "energetic, warm, creative",
+    },
+    "youth_pop": {
+        "name": "Youth Pop",
+        "desc": "유스 팝 — 10-20대 타겟",
+        "colors": {"bg": "#FFFCE8", "text": "#1F1147",
+                    "key": "#7C3AED", "sub1": "#F59E0B", "sub2": "#EC4899"},
+        "tags": ["젊음", "MZ", "팝", "캠페인", "SNS"],
+        "fit": ["marketing_pr", "event"],
+        "mood": "playful, bold, social",
+    },
+    "food_warm": {
+        "name": "Food Warm",
+        "desc": "푸드 웜 — F&B/요식업",
+        "colors": {"bg": "#FFF5E8", "text": "#3D2817",
+                    "key": "#D2691E", "sub1": "#8B4513", "sub2": "#228B22"},
+        "tags": ["F&B", "요식", "웜", "전통", "품질"],
+        "fit": ["marketing_pr", "event"],
+        "mood": "appetizing, warm, inviting",
+    },
+
+    # ── SPECIALIZED ────────────────────────────────────────────────
+    "heritage_gold": {
+        "name": "Heritage Gold",
+        "desc": "헤리티지 골드 — 공공기관/전통",
+        "colors": {"bg": "#FAF5E8", "text": "#2C1810",
+                    "key": "#8B1A1A", "sub1": "#C5973E", "sub2": "#4A5D23"},
+        "tags": ["전통", "공공", "한국", "문화", "유산"],
+        "fit": ["public", "consulting"],
+        "mood": "authoritative, traditional, cultural",
+    },
+    "industrial_steel": {
+        "name": "Industrial Steel",
+        "desc": "인더스트리얼 스틸 — 제조/산업",
+        "colors": {"bg": "#1F2937", "text": "#F9FAFB",
+                    "key": "#F59E0B", "sub1": "#EF4444", "sub2": "#10B981"},
+        "tags": ["제조", "산업", "다크", "강인", "중후"],
+        "fit": ["it_system", "consulting"],
+        "mood": "industrial, robust, technical",
+    },
+    "mono_elegant": {
+        "name": "Mono Elegant",
+        "desc": "모노 엘레강트 — 고급 컨설팅",
+        "colors": {"bg": "#FFFFFF", "text": "#0A0A0A",
+                    "key": "#404040", "sub1": "#737373", "sub2": "#B91C1C"},
+        "tags": ["모노", "흑백", "엘레강트", "프리미엄", "미니멀"],
+        "fit": ["consulting"],
+        "mood": "sophisticated, minimal, authoritative",
+    },
+    "fintech_purple": {
+        "name": "Fintech Purple",
+        "desc": "핀테크 퍼플 — 디지털 금융",
+        "colors": {"bg": "#0F0A1A", "text": "#FFFFFF",
+                    "key": "#8B5CF6", "sub1": "#3B82F6", "sub2": "#10B981"},
+        "tags": ["핀테크", "디지털", "금융", "테크", "모던"],
+        "fit": ["it_system", "consulting"],
+        "mood": "innovative, trustworthy, digital",
+    },
+    "event_gala": {
+        "name": "Event Gala",
+        "desc": "이벤트 갈라 — 시상식/행사",
+        "colors": {"bg": "#16080E", "text": "#FFF9E6",
+                    "key": "#D4AF37", "sub1": "#C0392B", "sub2": "#F4D06F"},
+        "tags": ["이벤트", "갈라", "시상식", "프리미엄", "골드"],
+        "fit": ["event"],
+        "mood": "prestigious, celebratory, golden",
+    },
+    "eco_fresh": {
+        "name": "Eco Fresh",
+        "desc": "에코 프레시 — 친환경 캠페인",
+        "colors": {"bg": "#F3F9F1", "text": "#1A3A1F",
+                    "key": "#22C55E", "sub1": "#84CC16", "sub2": "#F59E0B"},
+        "tags": ["친환경", "에코", "ESG", "자연", "캠페인"],
+        "fit": ["public", "marketing_pr"],
+        "mood": "fresh, sustainable, optimistic",
+    },
+}
+
+
+def list_palettes():
+    """팔레트 라이브러리 전체 출력."""
+    print(f"\n=== 팔레트 라이브러리 ({len(PALETTE_LIBRARY)}종) ===")
+    for key, p in PALETTE_LIBRARY.items():
+        colors = p["colors"]
+        print(f"\n  [{key}]  {p['name']}")
+        print(f"    {p['desc']}")
+        print(f"    태그: {', '.join(p['tags'][:5])}")
+        print(f"    색상: bg={colors['bg']}  text={colors['text']}  "
+               f"key={colors['key']}  sub1={colors['sub1']}  sub2={colors['sub2']}")
+    print()
+
+
+def recommend_palettes(project_type=None, industry=None, keywords=None,
+                        mood=None, top_n=3):
+    """프로젝트 특성 기반 팔레트 추천.
+
+    Args:
+        project_type: "marketing_pr" | "event" | "it_system" | "public" | "consulting"
+        industry: 업종 키워드 (예: "game", "finance", "food", "healthcare")
+        keywords: 추가 키워드 리스트 (예: ["다크", "모던"])
+        mood: 분위기 설명 (예: "luxurious", "bold")
+        top_n: 상위 N개 반환
+
+    Returns:
+        [{"key": str, "score": int, "palette": dict, "reason": str}, ...]
+    """
+    keywords = keywords or []
+    # 정규화
+    search_terms = set()
+    if industry:
+        search_terms.add(industry.lower())
+    for k in keywords:
+        search_terms.add(k.lower())
+    if mood:
+        search_terms.update(mood.lower().split())
+
+    scored = []
+    for key, pal in PALETTE_LIBRARY.items():
+        score = 0
+        reasons = []
+
+        # project_type 매칭
+        if project_type and project_type in pal.get("fit", []):
+            score += 3
+            reasons.append(f"'{project_type}' 적합")
+
+        # 태그 매칭
+        tag_set = {t.lower() for t in pal.get("tags", [])}
+        matched_tags = search_terms & tag_set
+        if matched_tags:
+            score += len(matched_tags) * 2
+            reasons.append(f"태그 매칭: {', '.join(matched_tags)}")
+
+        # mood 매칭
+        if mood and any(m in pal.get("mood", "").lower() for m in mood.lower().split()):
+            score += 2
+            reasons.append("분위기 일치")
+
+        # desc에 키워드 포함?
+        desc_lower = pal.get("desc", "").lower()
+        for term in search_terms:
+            if term in desc_lower:
+                score += 1
+
+        if score > 0:
+            scored.append({
+                "key": key,
+                "score": score,
+                "palette": pal,
+                "reason": "; ".join(reasons) if reasons else "부분 매칭",
+            })
+
+    # 점수 내림차순
+    scored.sort(key=lambda x: -x["score"])
+    return scored[:top_n]
+
+
+def print_recommendations(recs):
+    """추천 결과 콘솔 출력."""
+    if not recs:
+        print("\n  [추천 없음] 키워드를 추가하거나 list_palettes()로 전체 확인\n")
+        return
+    print(f"\n=== 팔레트 추천 (상위 {len(recs)}) ===")
+    for i, r in enumerate(recs, 1):
+        p = r["palette"]
+        c = p["colors"]
+        print(f"\n  {i}위. [{r['key']}]  {p['name']}  (score={r['score']})")
+        print(f"       {p['desc']}")
+        print(f"       근거: {r['reason']}")
+        print(f"       색상: bg={c['bg']}  text={c['text']}  key={c['key']}  "
+               f"sub1={c['sub1']}  sub2={c['sub2']}")
+    print(f"\n  적용: apply_from_library('<key>')  "
+           f"예: apply_from_library('{recs[0]['key']}')\n")
+
+
+def apply_from_library(palette_key):
+    """라이브러리에서 팔레트 키로 적용.
+
+    Example:
+        apply_from_library("finance_navy")
+    """
+    if palette_key not in PALETTE_LIBRARY:
+        raise ValueError(f"Unknown palette '{palette_key}'. "
+                           f"Available: {list(PALETTE_LIBRARY.keys())}")
+    pal = PALETTE_LIBRARY[palette_key]
+    apply_palette(**pal["colors"])
+    return pal
+
+
+def start_deck_interactive(project_type=None, industry=None,
+                             keywords=None, mood=None, auto_apply=True):
+    """새 덱 시작 시 원샷 — 추천 + 자동 적용.
+
+    Args:
+        project_type, industry, keywords, mood: recommend_palettes 참조
+        auto_apply: True면 1위 자동 적용
+
+    Returns:
+        적용된 팔레트 dict
+    """
+    propose_palette()
+    recs = recommend_palettes(project_type=project_type, industry=industry,
+                                keywords=keywords, mood=mood, top_n=3)
+    print_recommendations(recs)
+    if auto_apply and recs:
+        top = recs[0]
+        print(f"  → 1위 팔레트 자동 적용: {top['key']}\n")
+        apply_from_library(top["key"])
+        return PALETTE_LIBRARY[top["key"]]
+    return None
+
+
 def prune_slide_layouts(prs, keep_indexes=(6,)):
     """기본 슬라이드 레이아웃 정리 — keep_indexes 외 레이아웃 제거.
 
