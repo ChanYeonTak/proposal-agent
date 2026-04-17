@@ -179,15 +179,26 @@ def set_font(font_name, weights=None):
     return font_name
 
 
-def set_slide_size(width_in, height_in, margin_in=None):
-    """슬라이드 크기 변경 (v3.8) — 연관 상수 자동 재계산
+def set_slide_size(width_in, height_in, margin_in=None, scale_fonts=True):
+    """슬라이드 크기 변경 (v3.8/v4.1) — 연관 상수 자동 재계산
 
     Args:
         width_in: 슬라이드 너비 (인치)
         height_in: 슬라이드 높이 (인치)
         margin_in: 좌우 마진 (인치, 없으면 너비 비례 자동 계산)
+        scale_fonts: True면 SZ 딕셔너리를 캔버스 크기에 비례해 자동 스케일
     """
-    global SW, SH, ML, MR, CW, MT_Y, CW_IN, ML_IN, CGAP, GAP, Z
+    global SW, SH, ML, MR, CW, MT_Y, CW_IN, ML_IN, CGAP, GAP, Z, SZ
+    # 기준 13.333 × 7.5 대비 스케일 (원본 폰트 사이즈 복원용)
+    if scale_fonts:
+        _scale = width_in / 13.333
+        # SZ 전체를 기준값 대비 스케일링 (원본 보존용 _SZ_BASE)
+        if not hasattr(set_slide_size, "_SZ_BASE"):
+            set_slide_size._SZ_BASE = {k: v for k, v in SZ.items()}
+        for k, base_v in set_slide_size._SZ_BASE.items():
+            # 최소 6pt, 최대 원본값
+            scaled = max(6, int(round(base_v * _scale)))
+            SZ[k] = scaled
     SW = Inches(width_in)
     SH = Inches(height_in)
     if margin_in is not None:
@@ -1847,14 +1858,42 @@ def ICON_CARDS(s, items, y=None, h=None):
 #  12. 시각화 헬퍼
 # ═══════════════════════════════════════════════════════════════
 
-def IMG_PH(s, x, y, w, h, label="이미지 영역"):
-    """이미지 플레이스홀더 — 회색 박스 + 아이콘 + 라벨"""
-    R(s, x, y, w, h, f=C["light"], lc=C["lgray"])
+def IMG_PH(s, x, y, w, h, label="이미지 영역", on_dark=None):
+    """이미지 플레이스홀더 — 회색 박스 + 아이콘 + 라벨.
+
+    Args:
+        on_dark: True면 다크 배경용(어두운 회색 박스), False면 라이트 배경용.
+                 None이면 자동 감지(슬라이드 배경 체크).
+    """
+    # 자동 감지: 슬라이드 배경색이 어두우면 다크 모드
+    if on_dark is None:
+        try:
+            bg_rgb = s.background.fill.fore_color.rgb
+            # 배경 밝기 (luma)
+            luma = (int(bg_rgb[0]) * 0.299 + int(bg_rgb[1]) * 0.587
+                     + int(bg_rgb[2]) * 0.114)
+            on_dark = luma < 100
+        except Exception:
+            on_dark = False
+
+    if on_dark:
+        # 다크 배경용 — 카드 톤 박스 + 얇은 보더
+        fill_c = RGBColor(41, 46, 58)     # surface/dark
+        border_c = RGBColor(58, 64, 78)   # border/dark
+        icon_c = RGBColor(88, 96, 112)
+        label_c = RGBColor(128, 136, 152)
+    else:
+        fill_c = C["light"]
+        border_c = C["lgray"]
+        icon_c = C["lgray"]
+        label_c = C["gray"]
+
+    R(s, x, y, w, h, f=fill_c, lc=border_c)
     h_in = float(h / 914400)
     T(s, x, y + Inches(0.05), w, Inches(h_in * 0.5),
-      "[IMG]", sz=28, c=C["lgray"], al=PP_ALIGN.CENTER)
+      "[IMG]", sz=28, c=icon_c, al=PP_ALIGN.CENTER)
     T(s, x, y + Inches(h_in * 0.6), w, Inches(h_in * 0.3),
-      label, sz=SZ["body_sm"], c=C["gray"], al=PP_ALIGN.CENTER)
+      label, sz=SZ["body_sm"], c=label_c, al=PP_ALIGN.CENTER)
 
 
 def PROGRESS_BAR(s, x, y, w, label, value, max_val=100, color=None, show_pct=True):
@@ -3113,6 +3152,2176 @@ def SECTION_BRIDGE(s, from_text, to_text, connector="", bg_style="dark"):
     T(s, ML + Inches(0.5), Inches(3.8), CW - Inches(1.0), Inches(1.0),
       to_text, sz=SZ["action"], c=to_c, b=True, al=PP_ALIGN.CENTER,
       fn=FONT_W["bold"])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v4.0 "NEON" UPGRADE — reference-driven expansion (2026-04-17)
+# ═══════════════════════════════════════════════════════════════════════
+"""
+레퍼런스: [LAON]2026_메이플스토리_월드_메커톤_제안서_0401.pptx (65p)
+
+분석 결과 → 엔진 확장:
+  - 타이포그래피 밀도화 (9~11pt 본문 tier 추가)
+  - Semantic 컬러 토큰 + 다크 네온 팔레트
+  - 3-stop 브랜드 그라디언트
+  - 유리/네온/글로우 이펙트
+  - 10개 신규 컴포넌트 (NEON_FRAME, GLASS_CARD, CHEVRON_FLOW 등)
+  - 5개 신규 슬라이드 템플릿 (stat_hero, manifesto, dashboard 등)
+  - gaming_tech 테마
+
+모든 추가는 기존 v3.8 API와 완전 호환. 신규 이름은 충돌 없음.
+"""
+
+__version__ = "4.1"
+
+# v4.0 NEON 실험은 레퍼런스 오분석에 기반하여 실전 적용 비권장.
+# v4.1 에디토리얼 다크가 공식 권장 방향. (아래 v4.1 섹션 참조)
+# v4.0 함수들(NEON_FRAME, DOT_PATTERN, GLASS_CARD, NEON_KPI, DENSE_GRID,
+# SPLIT_DIAGONAL, TIMELINE_RIBBON, slide_manifesto, slide_dashboard 등)은
+# 하위 호환을 위해 남겨두지만 신규 제안서에는 사용 지양.
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 1. 확장 타이포그래피 tier (backward compat: 기존 SZ 유지)
+# ───────────────────────────────────────────────────────────────
+
+SZ.update({
+    # v4.0: 프레젠테이션 환경에 맞춰 레퍼런스 대비 2~4pt 상향
+    "micro":       10,   # 각주, 디스클레이머 (원본 7 → 10)
+    "caption_sm":  12,   # 밀도형 본문 (원본 9 → 12)
+    "label":       13,   # 범례/라벨 (원본 10 → 13)
+    "fine":        14,   # 촘촘 본문 (원본 11 → 14)
+    "stat_hero":   110,  # 대형 수치 (HERO) — 더 큰 임팩트 (원본 96 → 110)
+    "manifesto":   64,   # 선언문 제목 (원본 60 → 64)
+    "eyebrow":     13,   # 오버라인 kicker (원본 11 → 13)
+    "card_title":  22,   # 카드 타이틀 (신규)
+    "section_lg":  32,   # 섹션 대형 (신규)
+})
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 2. Semantic Color Tokens (9-step neutrals + accents)
+# ───────────────────────────────────────────────────────────────
+#
+# TOKENS는 C와 별개 네임스페이스. 기존 C는 그대로 유지.
+# 테마에 따라 업데이트되며, 새 v4.0 컴포넌트들이 참조.
+
+NEUTRAL_LIGHT = [
+    RGBColor(250, 251, 253),   # 50  — 최상위 표면
+    RGBColor(242, 245, 250),   # 100 — 페이퍼 화이트
+    RGBColor(235, 237, 240),   # 200 — 서브틀 표면 ⭐ 레퍼런스 dominant
+    RGBColor(215, 220, 228),   # 300 — 경계선
+    RGBColor(185, 192, 204),   # 400 — 보조
+    RGBColor(128, 136, 152),   # 500 — 뮤티드 텍스트
+    RGBColor(88, 96, 112),     # 600 — 서브 텍스트
+    RGBColor(58, 64, 78),      # 700 — 텍스트
+    RGBColor(41, 46, 58),      # 800 — 다크 표면 ⭐
+    RGBColor(28, 31, 40),      # 900 — 딥 다크
+]
+
+TOKENS = {
+    # 표면 / 배경
+    "surface/raised":   NEUTRAL_LIGHT[2],        # EBEDF0
+    "surface/base":     NEUTRAL_LIGHT[1],
+    "surface/dark":     NEUTRAL_LIGHT[8],        # 292E3A
+    "surface/darker":   NEUTRAL_LIGHT[9],        # 1C1F28
+    "surface/overlay":  RGBColor(20, 24, 34),
+
+    # 경계
+    "border/subtle":    NEUTRAL_LIGHT[3],
+    "border/dark":      RGBColor(47, 51, 64),    # 2F3340
+
+    # 브랜드
+    "brand/primary":    RGBColor(95, 112, 252),  # 5F70FC ⭐ 핵심 액센트
+    "brand/secondary":  RGBColor(98, 150, 255),  # 6296FF
+    "brand/deep":       RGBColor(0, 42, 128),    # 002A80
+
+    # 네온 (다크 BG 위에서 빛나는)
+    "neon/cyan":        RGBColor(102, 255, 255), # 66FFFF
+    "neon/aqua":        RGBColor(105, 226, 255), # 69E2FF
+    "neon/electric":    RGBColor(42, 246, 255),  # 2AF6FF
+    "neon/mint":        RGBColor(82, 255, 196),
+    "neon/yellow":      RGBColor(255, 224, 51),
+
+    # 그라디언트 정지점 (브랜드 gradient)
+    "grad/start":       RGBColor(15, 106, 199),  # 0F6AC7
+    "grad/mid":         RGBColor(95, 112, 252),  # 5F70FC
+    "grad/end":         RGBColor(185, 103, 255), # 보조 보라
+
+    # 텍스트
+    "text/on_dark":     RGBColor(255, 255, 255),
+    "text/on_light":    NEUTRAL_LIGHT[9],
+    "text/muted":       NEUTRAL_LIGHT[5],
+    "text/subtle":      NEUTRAL_LIGHT[6],
+    "text/accent":      RGBColor(95, 112, 252),
+}
+
+# v4.1 편의 alias — 짧은 이름으로 자주 참조되는 컬러
+TOKENS.update({
+    "primary":      TOKENS["brand/primary"],      # 퍼플 악센트
+    "secondary":    TOKENS["neon/cyan"],           # 사이언 eyebrow 전용
+    "accent":       TOKENS["brand/deep"],
+    "text":         TOKENS["text/on_dark"],
+    "muted":        TOKENS["text/muted"],
+    "bg":           TOKENS["surface/darker"],
+    "card":         TOKENS["surface/dark"],
+    "border":       TOKENS["border/subtle"],
+})
+
+
+def tok(key):
+    """TOKENS 빠른 접근자. tok('brand/primary') → RGBColor."""
+    return TOKENS[key]
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 3. 신규 테마: gaming_tech (다크 네온)
+# ───────────────────────────────────────────────────────────────
+
+THEMES["gaming_tech"] = {
+    "primary":   (95, 112, 252),   # 5F70FC
+    "secondary": (98, 150, 255),   # 6296FF
+    "teal":      (102, 255, 255),  # 66FFFF
+    "accent":    (185, 103, 255),  # purple
+    "dark":      (28, 31, 40),     # 1C1F28
+    "light":     (235, 237, 240),  # EBEDF0
+}
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 4. 확장 그라디언트 — 3-stop & 레퍼런스 기반
+# ───────────────────────────────────────────────────────────────
+
+GRAD.update({
+    # 2-stop 기본 브랜드 그라디언트 (블루 → 퍼플)
+    "brand":         lambda: (tok("grad/start"), tok("grad/mid")),
+    # 3-stop 전체 브랜드 (사용 시 gradient_shape_3stop 호출)
+    "brand_3stop":   lambda: (tok("grad/start"), tok("grad/mid"), tok("grad/end")),
+    # 네온 사이언 페이드
+    "neon_cyan":     lambda: (tok("neon/aqua"), tok("neon/electric")),
+    # 다크 아웃라인 글로우
+    "dark_glow":     lambda: (tok("surface/darker"), tok("surface/dark")),
+    # 섹션 디바이더용 (딥 네이비 → 브랜드)
+    "section_dark":  lambda: (tok("brand/deep"), tok("brand/primary")),
+})
+
+
+def gradient_shape_3stop(shape, c1, c2, c3, angle=5400000):
+    """3-stop 그라디언트 채우기. angle=5400000 → 90° (수직).
+
+    angle: 21600000 = 360°. 0=좌→우, 5400000=상→하, 10800000=우→좌.
+    """
+    try:
+        from lxml import etree
+    except ImportError:
+        return shape
+    ns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    spPr = shape._element.spPr
+    # 기존 fill 제거
+    for tag in ('solidFill', 'gradFill', 'noFill', 'blipFill', 'pattFill'):
+        for old in spPr.findall(f'{{{ns}}}{tag}'):
+            spPr.remove(old)
+    # 앞에 insert (fill은 spPr 첫 자식 중 하나)
+    gradFill = etree.SubElement(spPr, f'{{{ns}}}gradFill',
+                                 flip='none', rotWithShape='1')
+    gsLst = etree.SubElement(gradFill, f'{{{ns}}}gsLst')
+    for pos, rgb in [(0, c1), (50000, c2), (100000, c3)]:
+        gs = etree.SubElement(gsLst, f'{{{ns}}}gs', pos=str(pos))
+        etree.SubElement(gs, f'{{{ns}}}srgbClr',
+                          val=str(rgb).lstrip('#').upper() if isinstance(rgb, str)
+                              else f"{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}")
+    etree.SubElement(gradFill, f'{{{ns}}}lin', ang=str(angle), scaled='1')
+    # spPr 첫 자식 뒤로 이동 (xfrm 뒤)
+    return shape
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 5. 신규 이펙트 — glow, alpha, gradient_text, duotone
+# ───────────────────────────────────────────────────────────────
+
+def add_glow(shape, color=None, blur_pt=20, alpha=60):
+    """네온 글로우 이펙트 (outer glow).
+
+    Args:
+        color: RGBColor 또는 (r,g,b). None이면 tok("neon/cyan") 사용
+        blur_pt: 글로우 반경 (pt). 클수록 부드러운 퍼짐
+        alpha: 0~100 (%). 작을수록 투명
+    """
+    try:
+        from lxml import etree
+    except ImportError:
+        return shape
+    if color is None:
+        color = tok("neon/cyan")
+    rgb_hex = _rgb_to_hex(color)
+
+    ns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    spPr = shape._element.spPr
+    effectLst = spPr.find(f'{{{ns}}}effectLst')
+    if effectLst is None:
+        effectLst = etree.SubElement(spPr, f'{{{ns}}}effectLst')
+    glow = etree.SubElement(effectLst, f'{{{ns}}}glow',
+                             rad=str(blur_pt * 12700))
+    srgb = etree.SubElement(glow, f'{{{ns}}}srgbClr', val=rgb_hex)
+    # alpha는 100000 스케일 (100% = 100000)
+    etree.SubElement(srgb, f'{{{ns}}}alpha', val=str(alpha * 1000))
+    return shape
+
+
+def add_alpha(shape, alpha_pct=50):
+    """도형의 fill에 알파(투명도) 적용. 0=불투명, 100=완전투명."""
+    try:
+        from lxml import etree
+    except ImportError:
+        return shape
+    ns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    spPr = shape._element.spPr
+    # solidFill 내 srgbClr 밑에 a:alpha 삽입
+    solidFill = spPr.find(f'{{{ns}}}solidFill')
+    if solidFill is not None:
+        srgb = solidFill.find(f'{{{ns}}}srgbClr')
+        if srgb is not None:
+            # 기존 alpha 제거
+            for old in srgb.findall(f'{{{ns}}}alpha'):
+                srgb.remove(old)
+            etree.SubElement(srgb, f'{{{ns}}}alpha',
+                              val=str((100 - alpha_pct) * 1000))
+    return shape
+
+
+def _rgb_to_hex(c):
+    """RGBColor 또는 (r,g,b) 튜플 → 'RRGGBB' hex (대문자)."""
+    if hasattr(c, '__iter__') and not isinstance(c, str):
+        parts = list(c)
+        if len(parts) >= 3:
+            return f"{int(parts[0]):02X}{int(parts[1]):02X}{int(parts[2]):02X}"
+    # RGBColor는 __iter__로 (r,g,b) 반환
+    try:
+        s = str(c)
+        if len(s) == 6:
+            return s.upper()
+    except Exception:
+        pass
+    return "000000"
+
+
+def gradient_text(run, color_start, color_end):
+    """텍스트 run에 그라디언트 fill 적용.
+
+    주의: 작은 폰트(<20pt)에서는 효과 미미. 36pt 이상 권장.
+
+    Args:
+        run: TextFrame.runs[i] (python-pptx)
+        color_start, color_end: RGBColor 또는 hex str
+    """
+    try:
+        from lxml import etree
+    except ImportError:
+        return run
+    ns = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    rPr = run._r.get_or_add_rPr()
+    # 기존 solidFill 제거
+    for tag in ('solidFill', 'gradFill', 'noFill'):
+        for old in rPr.findall(f'{{{ns}}}{tag}'):
+            rPr.remove(old)
+    gradFill = etree.SubElement(rPr, f'{{{ns}}}gradFill', flip='none',
+                                 rotWithShape='1')
+    gsLst = etree.SubElement(gradFill, f'{{{ns}}}gsLst')
+    gs1 = etree.SubElement(gsLst, f'{{{ns}}}gs', pos='0')
+    etree.SubElement(gs1, f'{{{ns}}}srgbClr', val=_rgb_to_hex(color_start))
+    gs2 = etree.SubElement(gsLst, f'{{{ns}}}gs', pos='100000')
+    etree.SubElement(gs2, f'{{{ns}}}srgbClr', val=_rgb_to_hex(color_end))
+    etree.SubElement(gradFill, f'{{{ns}}}lin', ang='0', scaled='1')
+    return run
+
+
+def duotone_overlay(s, l, t, w, h, dark_color=None, light_color=None, alpha=70):
+    """이미지 위에 듀오톤 풍의 그라디언트 오버레이 반투명 레이어.
+
+    실제 duotone 필터가 아닌 그라디언트+알파 조합으로 유사 효과.
+    """
+    dark_color = dark_color or tok("surface/darker")
+    light_color = light_color or tok("brand/primary")
+    rect = R(s, l, t, w, h, dark_color)
+    gradient_shape(rect, dark_color, light_color, angle=2700000)
+    add_alpha(rect, alpha)
+    return rect
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 6. 신규 컴포넌트 10종
+# ───────────────────────────────────────────────────────────────
+
+def NEON_FRAME(s, l, t, w, h, color=None, glow_blur=18, line_pt=1.5,
+               rounded=True, corner_radius=0.02):
+    """네온 글로우 테두리 프레임 — 배경 없는 빛나는 외곽선.
+
+    다크 배경 위에서 극적인 임팩트. 컨셉 reveal / 강조 박스용.
+    """
+    color = color or tok("neon/cyan")
+    if rounded:
+        shape = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                    _ei(l), _ei(t), _ei(w), _ei(h))
+        try:
+            shape.adjustments[0] = corner_radius
+        except Exception:
+            pass
+    else:
+        shape = s.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                    _ei(l), _ei(t), _ei(w), _ei(h))
+    # 배경 투명
+    shape.fill.background()
+    # 아웃라인: 네온 컬러
+    shape.line.color.rgb = color
+    shape.line.width = Pt(line_pt)
+    # 글로우
+    add_glow(shape, color=color, blur_pt=glow_blur, alpha=70)
+    return shape
+
+
+def GLASS_CARD(s, l, t, w, h, *, alpha=40, border=True, border_color=None,
+               tint=None, rounded=True):
+    """반투명 유리 카드 (glassmorphism 근사).
+
+    Args:
+        alpha: 0~100. 40 = 60% 불투명. 레퍼런스 빈번 값.
+        border: True면 얇은 테두리
+        tint: fill 기본색. None이면 tok("surface/raised")
+        rounded: 라운드 사각형 여부
+    """
+    tint = tint or tok("surface/raised")
+    border_color = border_color or tok("border/subtle")
+
+    if rounded:
+        shape = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                    _ei(l), _ei(t), _ei(w), _ei(h))
+        try:
+            shape.adjustments[0] = 0.03
+        except Exception:
+            pass
+    else:
+        shape = s.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                    _ei(l), _ei(t), _ei(w), _ei(h))
+
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = tint
+    add_alpha(shape, alpha)
+
+    if border:
+        shape.line.color.rgb = border_color
+        shape.line.width = Pt(0.8)
+    else:
+        shape.line.fill.background()
+
+    return shape
+
+
+def _ei(v):
+    """EMU-safe int helper (기존 _safe_int alias, 짧게)."""
+    return _safe_int(v)
+
+
+def CHEVRON_FLOW(s, l_in, t_in, w_in, h_in, items, *,
+                  fill_color=None, text_color=None, gap_in=0.05):
+    """쉐브론 기반 프로세스 플로우 — 모던 게임UI 느낌.
+
+    Args:
+        items: [str, ...] — 각 쉐브론의 텍스트
+        gap_in: 쉐브론 간 겹침/간격
+    """
+    fill_color = fill_color or tok("brand/primary")
+    text_color = text_color or tok("text/on_dark")
+    n = len(items)
+    if n == 0:
+        return
+    total_w = w_in
+    each_w = (total_w - gap_in * (n - 1)) / n
+
+    for i, text in enumerate(items):
+        left = l_in + i * (each_w + gap_in)
+        shape = s.shapes.add_shape(MSO_SHAPE.CHEVRON,
+                                    Inches(left), Inches(t_in),
+                                    Inches(each_w), Inches(h_in))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = fill_color
+        shape.line.fill.background()
+        # 텍스트
+        tf = shape.text_frame
+        tf.margin_left = Inches(0.15)
+        tf.margin_right = Inches(0.15)
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = text
+        run.font.name = FONT_W["semibold"]
+        run.font.size = Pt(SZ["fine"])
+        run.font.color.rgb = text_color
+        run.font.bold = True
+
+
+def PARALLELOGRAM_BADGE(s, l_in, t_in, w_in, h_in, text, *,
+                         color=None, text_color=None, sz_pt=None):
+    """평행사변형 뱃지 — 섹션 라벨/카테고리 태그."""
+    color = color or tok("brand/primary")
+    text_color = text_color or tok("text/on_dark")
+    sz_pt = sz_pt or SZ["label"]
+
+    shape = s.shapes.add_shape(MSO_SHAPE.PARALLELOGRAM,
+                                Inches(l_in), Inches(t_in),
+                                Inches(w_in), Inches(h_in))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = color
+    shape.line.fill.background()
+    try:
+        shape.adjustments[0] = 0.25
+    except Exception:
+        pass
+
+    tf = shape.text_frame
+    tf.margin_left = Inches(0.15)
+    tf.margin_right = Inches(0.15)
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = text
+    run.font.name = FONT_W["bold"]
+    run.font.size = Pt(sz_pt)
+    run.font.color.rgb = text_color
+    run.font.bold = True
+    return shape
+
+
+def DOT_PATTERN(s, l_in, t_in, w_in, h_in, *,
+                 dot_size_pt=3, gap_in=0.6, color=None, alpha_pct=50,
+                 max_dots=150):
+    """장식 도트 패턴 배경 — 섹션 구분/배경 텍스처.
+
+    성능: max_dots 상한 강제 (PPTX에 수백 개 도형 생성 방지).
+
+    Args:
+        gap_in: 도트 간격 (기본 0.6" — 성능 고려)
+        max_dots: 총 도트 수 상한 (초과 시 gap 자동 증가)
+    """
+    color = color or tok("text/muted")
+    # 성능 보호: 도트 수 상한
+    est = (w_in / gap_in) * (h_in / gap_in)
+    if est > max_dots:
+        scale = (est / max_dots) ** 0.5
+        gap_in = gap_in * scale
+    cols = int(w_in / gap_in) + 1
+    rows = int(h_in / gap_in) + 1
+    dot_size_in = dot_size_pt / 72
+    count = 0
+    for r in range(rows):
+        for c in range(cols):
+            if count >= max_dots:
+                return
+            x = l_in + c * gap_in
+            y = t_in + r * gap_in
+            if x + dot_size_in > l_in + w_in:
+                continue
+            if y + dot_size_in > t_in + h_in:
+                continue
+            dot = s.shapes.add_shape(MSO_SHAPE.OVAL,
+                                      Inches(x), Inches(y),
+                                      Inches(dot_size_in), Inches(dot_size_in))
+            dot.fill.solid()
+            dot.fill.fore_color.rgb = color
+            dot.line.fill.background()
+            add_alpha(dot, alpha_pct)
+            count += 1
+
+
+def STAT_HERO(s, l_in, t_in, w_in, h_in, value, label, *,
+               unit="", sub="", color=None, label_color=None,
+               value_sz=None, label_sz=None, align="center"):
+    """대형 수치 히어로 — 핵심 통계 강조.
+
+    레퍼런스 feel: 96pt 수치 + 얇은 라벨 + 작은 설명
+    """
+    color = color or tok("brand/primary")
+    label_color = label_color or tok("text/muted")
+    value_sz = value_sz or SZ["stat_hero"]
+    label_sz = label_sz or SZ["label"]
+
+    al = {"center": PP_ALIGN.CENTER, "left": PP_ALIGN.LEFT,
+          "right": PP_ALIGN.RIGHT}[align]
+
+    # 값 + 단위
+    val_h = value_sz / 72 * 1.25
+    label_h = label_sz / 72 * 2.0
+
+    val_y = t_in + (h_in - val_h - label_h - 0.15) / 2
+
+    # 큰 숫자
+    val_box = s.shapes.add_textbox(Inches(l_in), Inches(val_y),
+                                    Inches(w_in), Inches(val_h))
+    tf = val_box.text_frame
+    tf.margin_left = tf.margin_right = Inches(0.05)
+    tf.margin_top = tf.margin_bottom = Inches(0.0)
+    p = tf.paragraphs[0]
+    p.alignment = al
+    run = p.add_run()
+    run.text = str(value)
+    run.font.name = FONT_W["black"]
+    run.font.size = Pt(value_sz)
+    run.font.color.rgb = color
+    run.font.bold = True
+    if unit:
+        run2 = p.add_run()
+        run2.text = " " + unit
+        run2.font.name = FONT_W["medium"]
+        run2.font.size = Pt(int(value_sz * 0.35))
+        run2.font.color.rgb = label_color
+
+    # 라벨
+    lab_box = s.shapes.add_textbox(Inches(l_in),
+                                    Inches(val_y + val_h + 0.05),
+                                    Inches(w_in), Inches(label_h))
+    ltf = lab_box.text_frame
+    ltf.margin_left = ltf.margin_right = Inches(0.05)
+    lp = ltf.paragraphs[0]
+    lp.alignment = al
+    lrun = lp.add_run()
+    lrun.text = label
+    lrun.font.name = FONT_W["medium"]
+    lrun.font.size = Pt(label_sz)
+    lrun.font.color.rgb = label_color
+
+    if sub:
+        sub_box = s.shapes.add_textbox(Inches(l_in),
+                                        Inches(val_y + val_h + 0.05 + label_sz/72*1.3),
+                                        Inches(w_in), Inches(0.3))
+        stf = sub_box.text_frame
+        stf.margin_left = stf.margin_right = Inches(0.05)
+        sp = stf.paragraphs[0]
+        sp.alignment = al
+        srun = sp.add_run()
+        srun.text = sub
+        srun.font.name = FONT_W["regular"]
+        srun.font.size = Pt(SZ["caption_sm"])
+        srun.font.color.rgb = tok("text/subtle")
+
+
+def NEON_KPI(s, l_in, t_in, w_in, h_in, items, *,
+              cols=None, gap_in=0.15, card_color=None, accent=None):
+    """네온 아웃라인 KPI 카드 그리드.
+
+    items: [{"value": "150%", "label": "성장률", "sub": "YoY"}, ...]
+    """
+    card_color = card_color or tok("surface/dark")
+    accent = accent or tok("neon/cyan")
+    n = len(items)
+    cols = cols or n
+    rows = (n + cols - 1) // cols
+    each_w = (w_in - gap_in * (cols - 1)) / cols
+    each_h = (h_in - gap_in * (rows - 1)) / rows
+
+    for i, it in enumerate(items):
+        r = i // cols
+        c = i % cols
+        x = l_in + c * (each_w + gap_in)
+        y = t_in + r * (each_h + gap_in)
+
+        # 다크 카드 배경
+        card = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
+                                   Inches(x), Inches(y),
+                                   Inches(each_w), Inches(each_h))
+        try:
+            card.adjustments[0] = 0.04
+        except Exception:
+            pass
+        card.fill.solid()
+        card.fill.fore_color.rgb = card_color
+        card.line.color.rgb = accent
+        card.line.width = Pt(1.2)
+        add_glow(card, color=accent, blur_pt=12, alpha=50)
+
+        # 값
+        val_box = s.shapes.add_textbox(Inches(x), Inches(y + each_h * 0.18),
+                                        Inches(each_w), Inches(each_h * 0.45))
+        tf = val_box.text_frame
+        tf.margin_left = tf.margin_right = Inches(0.05)
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = str(it.get("value", ""))
+        run.font.name = FONT_W["black"]
+        run.font.size = Pt(36)
+        run.font.color.rgb = accent
+        run.font.bold = True
+
+        # 라벨
+        lab_box = s.shapes.add_textbox(Inches(x),
+                                        Inches(y + each_h * 0.62),
+                                        Inches(each_w),
+                                        Inches(each_h * 0.2))
+        ltf = lab_box.text_frame
+        ltf.margin_left = ltf.margin_right = Inches(0.05)
+        lp = ltf.paragraphs[0]
+        lp.alignment = PP_ALIGN.CENTER
+        lrun = lp.add_run()
+        lrun.text = it.get("label", "")
+        lrun.font.name = FONT_W["semibold"]
+        lrun.font.size = Pt(SZ["fine"])
+        lrun.font.color.rgb = tok("text/on_dark")
+
+        # 서브
+        if it.get("sub"):
+            sub_box = s.shapes.add_textbox(Inches(x),
+                                            Inches(y + each_h * 0.80),
+                                            Inches(each_w),
+                                            Inches(each_h * 0.14))
+            stf = sub_box.text_frame
+            stf.margin_left = stf.margin_right = Inches(0.05)
+            sp = stf.paragraphs[0]
+            sp.alignment = PP_ALIGN.CENTER
+            srun = sp.add_run()
+            srun.text = it["sub"]
+            srun.font.name = FONT_W["regular"]
+            srun.font.size = Pt(SZ["caption_sm"])
+            srun.font.color.rgb = tok("text/muted")
+
+
+def SPLIT_DIAGONAL(s, *, left_color=None, right_color=None,
+                    angle_deg=12, split_ratio=0.5):
+    """다이아고널 2-분할 배경 레이어.
+
+    슬라이드 전체를 두 색으로 분할하되, 경계선이 기울어진 형태.
+
+    Args:
+        split_ratio: 0~1. 좌측 영역 비율 (기본 0.5)
+        angle_deg: 분할선 기울기 (양수=우하향)
+    """
+    left_color = left_color or tok("surface/dark")
+    right_color = right_color or tok("surface/darker")
+    # 좌측 전체 채움
+    R(s, 0, 0, SW, SH, left_color)
+    # 우측을 평행사변형으로 덮기
+    from math import tan, radians
+    sh_in = SH / 914400
+    sw_in = SW / 914400
+    offset_in = tan(radians(angle_deg)) * sh_in
+    # 평행사변형: 좌상단 (split_ratio*sw), 우상단 (sw), 우하단 (sw), 좌하단 (split_ratio*sw - offset)
+    # python-pptx add_freeform은 복잡하므로 add_shape(MSO_SHAPE.PARALLELOGRAM) 사용
+    para_l = split_ratio * sw_in - offset_in / 2
+    para_w = sw_in - para_l + offset_in
+    para = s.shapes.add_shape(MSO_SHAPE.RIGHT_TRIANGLE,
+                               Inches(para_l), Inches(0),
+                               Inches(para_w * 1.2), Inches(sh_in))
+    # 삼각형은 정확한 대각선 분할에 적합
+    para.fill.solid()
+    para.fill.fore_color.rgb = right_color
+    para.line.fill.background()
+    # 180도 플립해서 좌하향 → 우상단으로
+    try:
+        para.rotation = 0
+    except Exception:
+        pass
+    return para
+
+
+def DENSE_GRID(s, l_in, t_in, w_in, h_in, items, *,
+                cols=4, gap_in=0.12, card_color=None, text_color=None):
+    """9~12개 아이템 대시보드 그리드 — 정보 밀도 높은 레이아웃.
+
+    items: [{"title": str, "value": str, "desc": str}, ...]
+    """
+    card_color = card_color or tok("surface/raised")
+    text_color = text_color or tok("text/on_light")
+    n = len(items)
+    rows = (n + cols - 1) // cols
+    each_w = (w_in - gap_in * (cols - 1)) / cols
+    each_h = (h_in - gap_in * (rows - 1)) / rows
+
+    for i, it in enumerate(items):
+        r = i // cols
+        c = i % cols
+        x = l_in + c * (each_w + gap_in)
+        y = t_in + r * (each_h + gap_in)
+
+        GLASS_CARD(s, x, y, each_w, each_h, alpha=0, border=True,
+                    tint=card_color)
+
+        # 타이틀
+        t_box = s.shapes.add_textbox(Inches(x + 0.15), Inches(y + 0.12),
+                                      Inches(each_w - 0.3), Inches(0.3))
+        tf = t_box.text_frame
+        tf.margin_left = tf.margin_right = Inches(0.0)
+        p = tf.paragraphs[0]
+        run = p.add_run()
+        run.text = it.get("title", "")
+        run.font.name = FONT_W["bold"]
+        run.font.size = Pt(SZ["caption_sm"])
+        run.font.color.rgb = tok("brand/primary")
+        run.font.bold = True
+
+        # 값
+        v_box = s.shapes.add_textbox(Inches(x + 0.15),
+                                      Inches(y + each_h * 0.35),
+                                      Inches(each_w - 0.3),
+                                      Inches(each_h * 0.35))
+        vtf = v_box.text_frame
+        vp = vtf.paragraphs[0]
+        vr = vp.add_run()
+        vr.text = it.get("value", "")
+        vr.font.name = FONT_W["bold"]
+        vr.font.size = Pt(18)
+        vr.font.color.rgb = text_color
+        vr.font.bold = True
+
+        # 설명
+        d_box = s.shapes.add_textbox(Inches(x + 0.15),
+                                      Inches(y + each_h * 0.72),
+                                      Inches(each_w - 0.3),
+                                      Inches(each_h * 0.25))
+        dtf = d_box.text_frame
+        dtf.word_wrap = True
+        dp = dtf.paragraphs[0]
+        dr = dp.add_run()
+        dr.text = it.get("desc", "")
+        dr.font.name = FONT_W["regular"]
+        dr.font.size = Pt(SZ["caption_sm"])
+        dr.font.color.rgb = tok("text/muted")
+
+
+def TIMELINE_RIBBON(s, items, *, y_in=None, h_in=0.7,
+                     color=None, text_color=None):
+    """리본 스타일 타임라인 — 가로로 흐르는 얇은 리본.
+
+    items: [("2024 Q1", "런칭"), ("2024 Q2", "성장"), ...]
+    """
+    color = color or tok("brand/primary")
+    text_color = text_color or tok("text/on_dark")
+    if y_in is None:
+        y_in = 3.5
+    l_in = 0.5
+    w_in = 12.0
+    n = len(items)
+    seg_w = w_in / n
+
+    # 리본 본체
+    ribbon = R(s, Inches(l_in), Inches(y_in), Inches(w_in), Inches(h_in),
+                color)
+    try:
+        # 리본을 라운드로
+        pass
+    except Exception:
+        pass
+
+    for i, item in enumerate(items):
+        label, desc = item if isinstance(item, tuple) else (item.get("label", ""), item.get("desc", ""))
+        x = l_in + i * seg_w
+        # 구분선
+        if i > 0:
+            line = R(s, Inches(x), Inches(y_in + 0.05),
+                      Inches(0.01), Inches(h_in - 0.1),
+                      tok("text/on_dark"))
+            add_alpha(line, 50)
+
+        # 라벨 (상단)
+        l_box = s.shapes.add_textbox(Inches(x + 0.05),
+                                      Inches(y_in - 0.5),
+                                      Inches(seg_w - 0.1),
+                                      Inches(0.35))
+        ltf = l_box.text_frame
+        lp = ltf.paragraphs[0]
+        lp.alignment = PP_ALIGN.CENTER
+        lrun = lp.add_run()
+        lrun.text = label
+        lrun.font.name = FONT_W["bold"]
+        lrun.font.size = Pt(SZ["fine"])
+        lrun.font.color.rgb = tok("brand/primary")
+        lrun.font.bold = True
+
+        # 설명 (리본 내부)
+        d_box = s.shapes.add_textbox(Inches(x + 0.05),
+                                      Inches(y_in + 0.12),
+                                      Inches(seg_w - 0.1),
+                                      Inches(h_in - 0.24))
+        dtf = d_box.text_frame
+        dtf.word_wrap = True
+        dp = dtf.paragraphs[0]
+        dp.alignment = PP_ALIGN.CENTER
+        dr = dp.add_run()
+        dr.text = desc
+        dr.font.name = FONT_W["medium"]
+        dr.font.size = Pt(SZ["label"])
+        dr.font.color.rgb = text_color
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 7. 신규 슬라이드 템플릿 5종
+# ───────────────────────────────────────────────────────────────
+
+def slide_stat_hero(prs, title, value, label, *,
+                     unit="", sub="", kicker="",
+                     bg_dark=True, accent_color=None, pg=None):
+    """대형 수치 히어로 슬라이드.
+
+    Args:
+        title: 상단 작은 제목 (Action Title)
+        value: 거대한 숫자 (예: "87%")
+        label: 숫자 아래 설명 (예: "타겟 도달률")
+        unit: 단위 (값에 포함되지 않은 경우)
+        sub: 라벨 아래 보조 설명
+        kicker: 타이틀 위 eyebrow (예: "핵심 지표 01")
+        bg_dark: 다크 배경 여부
+    """
+    s = new_slide(prs)
+    accent = accent_color or tok("brand/primary")
+
+    if bg_dark:
+        bg(s, tok("surface/darker"))
+        title_color = tok("text/on_dark")
+        label_color = tok("text/muted")
+        DOT_PATTERN(s, 0.5, 0.5, 12.0, 6.3, dot_size_pt=2,
+                     gap_in=0.3, color=tok("border/dark"), alpha_pct=30)
+    else:
+        bg(s, tok("surface/base"))
+        title_color = tok("text/on_light")
+        label_color = tok("text/muted")
+
+    # Kicker
+    if kicker:
+        T(s, ML, Inches(0.7), CW, Inches(0.3), kicker,
+          sz=SZ["eyebrow"], c=accent, b=True, al=PP_ALIGN.CENTER,
+          fn=FONT_W["bold"])
+
+    # 타이틀
+    T(s, ML, Inches(1.0 if kicker else 1.2), CW, Inches(0.6),
+      title, sz=SZ["action"], c=title_color, al=PP_ALIGN.CENTER,
+      fn=FONT_W["semibold"])
+
+    # 히어로 수치
+    STAT_HERO(s, l_in=1.0, t_in=2.4, w_in=11.3, h_in=3.2,
+               value=value, label=label, unit=unit, sub=sub,
+               color=accent,
+               label_color=tok("text/on_dark") if bg_dark else tok("text/on_light"),
+               align="center")
+
+    if pg is not None:
+        PN(s, pg)
+
+
+def slide_manifesto(prs, statement, *, attribution="",
+                      bg_dark=True, accent_color=None, pg=None):
+    """대형 선언문 슬라이드 — 큰 메시지 한 문장만.
+
+    Args:
+        statement: 선언문 전체 텍스트 (여러 줄 가능)
+        attribution: 하단 서명/출처
+    """
+    s = new_slide(prs)
+    accent = accent_color or tok("brand/primary")
+
+    if bg_dark:
+        # 그라디언트 배경
+        gradient_bg(s, tok("surface/darker"), tok("surface/dark"))
+        text_color = tok("text/on_dark")
+    else:
+        gradient_bg(s, tok("surface/base"), tok("surface/raised"))
+        text_color = tok("text/on_light")
+
+    # 좌측 악센트 바 (네온 느낌)
+    bar = R(s, Inches(0.8), Inches(2.2), Inches(0.08), Inches(3.1), accent)
+    add_glow(bar, color=accent, blur_pt=12, alpha=60)
+
+    # 큰 선언문
+    T(s, Inches(1.4), Inches(2.2), Inches(10.6), Inches(3.1),
+      statement, sz=SZ["manifesto"], c=text_color, b=True,
+      fn=FONT_W["bold"], al=PP_ALIGN.LEFT)
+
+    # 서명
+    if attribution:
+        T(s, Inches(1.4), Inches(5.6), Inches(10.6), Inches(0.4),
+          "— " + attribution, sz=SZ["caption_sm"], c=accent,
+          fn=FONT_W["medium"], al=PP_ALIGN.LEFT)
+
+    if pg is not None:
+        PN(s, pg)
+
+
+def slide_comparison_3way(prs, title, columns, *, pg=None,
+                            bg_dark=False, highlight_idx=None):
+    """3-way 비교 슬라이드.
+
+    columns: [{"title": str, "body": [str, ...], "badge": str?}, ...]
+    highlight_idx: 강조할 컬럼 인덱스 (0~2). 해당 컬럼에 네온 프레임.
+    """
+    s = new_slide(prs)
+    if bg_dark:
+        bg(s, tok("surface/darker"))
+        title_color = tok("text/on_dark")
+        card_color = tok("surface/dark")
+        border_color = tok("border/dark")
+        body_color = tok("text/on_dark")
+    else:
+        bg(s, tok("surface/base"))
+        title_color = tok("text/on_light")
+        card_color = tok("surface/raised")
+        border_color = tok("border/subtle")
+        body_color = tok("text/on_light")
+
+    # 타이틀
+    TB(s, title, pg=pg)
+
+    # 3 컬럼
+    start_y = 1.6
+    card_h = 5.0
+    total_w = 12.0
+    card_gap = 0.2
+    card_w = (total_w - card_gap * 2) / 3
+    start_x = 0.67
+
+    for i, col in enumerate(columns[:3]):
+        x = start_x + i * (card_w + card_gap)
+
+        if highlight_idx == i:
+            NEON_FRAME(s, Inches(x - 0.04), Inches(start_y - 0.04),
+                        Inches(card_w + 0.08), Inches(card_h + 0.08),
+                        color=tok("brand/primary"), glow_blur=15, line_pt=2)
+
+        card = GLASS_CARD(s, x, start_y, card_w, card_h,
+                           alpha=0, border=True, tint=card_color,
+                           border_color=border_color)
+
+        # 뱃지 (있으면)
+        if col.get("badge"):
+            PARALLELOGRAM_BADGE(s, x + 0.25, start_y + 0.2, 1.5, 0.35,
+                                 col["badge"],
+                                 color=tok("brand/primary"))
+
+        # 컬럼 타이틀
+        T(s, Inches(x + 0.3),
+          Inches(start_y + (0.7 if col.get("badge") else 0.3)),
+          Inches(card_w - 0.6), Inches(0.6),
+          col["title"], sz=24, c=body_color, b=True,
+          fn=FONT_W["bold"])
+
+        # 본문
+        MT(s, Inches(x + 0.3),
+           Inches(start_y + 1.5),
+           Inches(card_w - 0.6),
+           Inches(card_h - 2.0),
+           col.get("body", []), sz=SZ["fine"],
+           c=body_color if not bg_dark else tok("text/on_dark"),
+           bul=True)
+
+
+def slide_dashboard(prs, title, items, *, cols=4, pg=None,
+                     bg_dark=False):
+    """정보 밀도 대시보드 슬라이드 — 9~12개 메트릭 카드."""
+    s = new_slide(prs)
+    if bg_dark:
+        bg(s, tok("surface/darker"))
+    else:
+        bg(s, tok("surface/base"))
+    TB(s, title, pg=pg)
+
+    grid_h = 5.0
+    DENSE_GRID(s, l_in=0.67, t_in=1.5, w_in=12.0, h_in=grid_h,
+                items=items, cols=cols,
+                card_color=tok("surface/dark") if bg_dark else tok("surface/raised"),
+                text_color=tok("text/on_dark") if bg_dark else tok("text/on_light"))
+
+
+def slide_timeline_ribbon(prs, title, items, *, pg=None, bg_dark=False,
+                            color=None):
+    """리본 스타일 타임라인 슬라이드.
+
+    items: [("2024 Q1", "런칭 준비"), ("Q2", "MVP 출시"), ...]
+    """
+    s = new_slide(prs)
+    if bg_dark:
+        bg(s, tok("surface/darker"))
+    else:
+        bg(s, tok("surface/base"))
+    TB(s, title, pg=pg)
+
+    TIMELINE_RIBBON(s, items, y_in=3.3, h_in=1.1,
+                     color=color or tok("brand/primary"),
+                     text_color=tok("text/on_dark"))
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 8. 기존 컴포넌트 확장 변형 (non-breaking)
+# ───────────────────────────────────────────────────────────────
+
+def HIGHLIGHT_NEON(s, title, sub="", y_in=1.5, color=None):
+    """HIGHLIGHT의 네온 버전 — 다크 배경 + 글로우."""
+    color = color or tok("neon/cyan")
+    h_in = 1.4 if sub else 1.0
+
+    # 다크 배경 카드
+    card = R(s, Inches(0.5), Inches(y_in), Inches(12.3), Inches(h_in),
+              tok("surface/dark"))
+    add_glow(card, color=color, blur_pt=14, alpha=45)
+
+    # 왼쪽 네온 악센트
+    bar = R(s, Inches(0.5), Inches(y_in), Inches(0.08), Inches(h_in), color)
+    add_glow(bar, color=color, blur_pt=20, alpha=80)
+
+    # 제목
+    T(s, Inches(0.8), Inches(y_in + 0.2),
+      Inches(11.8), Inches(0.6), title,
+      sz=28, c=tok("text/on_dark"), b=True, fn=FONT_W["bold"])
+
+    if sub:
+        T(s, Inches(0.8), Inches(y_in + 0.85),
+          Inches(11.8), Inches(0.4), sub,
+          sz=SZ["fine"], c=tok("text/muted"), fn=FONT_W["regular"])
+
+
+def slide_cover_neon(prs, title, subtitle, client="", *,
+                      kicker="", accent_color=None):
+    """네온 스타일 표지 — 다크 + 브랜드 그라디언트."""
+    s = new_slide(prs)
+    accent = accent_color or tok("brand/primary")
+
+    # 그라디언트 배경
+    gradient_bg(s, tok("surface/darker"), tok("surface/dark"))
+
+    # 도트 패턴 배경
+    DOT_PATTERN(s, 0.5, 0.5, 12.3, 6.5, dot_size_pt=2,
+                 gap_in=0.3, color=tok("border/dark"), alpha_pct=40)
+
+    # Kicker (있으면)
+    if kicker:
+        PARALLELOGRAM_BADGE(s, 1.0, 2.0, 2.2, 0.4, kicker,
+                             color=accent)
+
+    # 메인 타이틀
+    T(s, Inches(1.0), Inches(2.6 if kicker else 2.2),
+      Inches(11.3), Inches(1.6), title,
+      sz=SZ["hero"], c=tok("text/on_dark"), b=True,
+      fn=FONT_W["black"], al=PP_ALIGN.LEFT)
+
+    # 서브타이틀
+    T(s, Inches(1.0), Inches(4.4), Inches(11.3), Inches(0.8),
+      subtitle, sz=SZ["action"], c=accent,
+      fn=FONT_W["semibold"], al=PP_ALIGN.LEFT)
+
+    # 클라이언트
+    if client:
+        bar = R(s, Inches(1.0), Inches(5.8), Inches(0.04), Inches(0.5),
+                 accent)
+        T(s, Inches(1.15), Inches(5.8), Inches(11.0), Inches(0.5),
+          client, sz=SZ["fine"], c=tok("text/on_dark"),
+          fn=FONT_W["medium"], al=PP_ALIGN.LEFT)
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.0 / 9. 편의 헬퍼
+# ───────────────────────────────────────────────────────────────
+
+def list_v4_components():
+    """v4.0 신규 컴포넌트/템플릿 목록."""
+    items = [
+        ("COMPONENT", "NEON_FRAME", "네온 글로우 테두리"),
+        ("COMPONENT", "GLASS_CARD", "반투명 유리 카드"),
+        ("COMPONENT", "CHEVRON_FLOW", "쉐브론 프로세스"),
+        ("COMPONENT", "PARALLELOGRAM_BADGE", "기울어진 뱃지"),
+        ("COMPONENT", "DOT_PATTERN", "도트 패턴 배경"),
+        ("COMPONENT", "STAT_HERO", "대형 수치"),
+        ("COMPONENT", "NEON_KPI", "네온 KPI 카드"),
+        ("COMPONENT", "SPLIT_DIAGONAL", "대각선 2분할"),
+        ("COMPONENT", "DENSE_GRID", "정보 밀도 그리드"),
+        ("COMPONENT", "TIMELINE_RIBBON", "리본 타임라인"),
+        ("EFFECT", "add_glow", "네온 글로우"),
+        ("EFFECT", "add_alpha", "투명도"),
+        ("EFFECT", "gradient_text", "그라디언트 텍스트"),
+        ("EFFECT", "duotone_overlay", "듀오톤 오버레이"),
+        ("EFFECT", "gradient_shape_3stop", "3-stop 그라디언트"),
+        ("TEMPLATE", "slide_stat_hero", "대형 수치 슬라이드"),
+        ("TEMPLATE", "slide_manifesto", "선언문 슬라이드"),
+        ("TEMPLATE", "slide_comparison_3way", "3-way 비교"),
+        ("TEMPLATE", "slide_dashboard", "정보 대시보드"),
+        ("TEMPLATE", "slide_timeline_ribbon", "리본 타임라인"),
+        ("TEMPLATE", "slide_cover_neon", "네온 표지"),
+        ("VARIANT", "HIGHLIGHT_NEON", "네온 하이라이트"),
+    ]
+    print(f"\n=== slide_kit v{__version__} — 신규 기능 ({len(items)}개) ===")
+    for kind, name, desc in items:
+        print(f"  [{kind:<10}] {name:<25} {desc}")
+    print()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  v4.1 "EDITORIAL DARK" — 레퍼런스 재분석 기반 재설계 (2026-04-17)
+# ═══════════════════════════════════════════════════════════════════════
+"""
+레퍼런스 22장 실측 분석 결과 반영.
+
+v4.0은 "게이밍 네온"이라는 오분석에 기반했지만, 실제 레퍼런스는
+에디토리얼(MIT Tech Review / Stripe Press 계열) 다크 스타일이다.
+
+핵심 원칙:
+  1. 섹션 디바이더는 "여백 80% + 거대 영문"이 정답
+  2. 콘텐츠 워크호스는 "포토 카드 3열 + 본문"
+  3. 사이언 네온은 eyebrow 라벨 전용 (배경 사용 금지)
+  4. 퍼플 브랜드는 쉐브론/악센트 바 등 최소 강조만
+  5. 풀블리드 사진 + 하단 그라디언트 오버레이가 최고급 느낌의 원천
+  6. 표는 다크 BG + 헤더 컬러 바 + 넉넉한 패딩
+  7. 페이지당 색상 4개 이하
+
+컴포넌트:
+  - HEADLINE_STACK       eyebrow + pre + headline 표준 타이포 묶음
+  - PHOTO_CARD_TRIO      3열 포토 카드 (워크호스)
+  - STAT_ROW_HERO        거대 수치 3개 가로 배치
+  - DATA_TABLE_DARK      다크 배경 표
+  - PHOTO_FULL_OVERLAY   풀블리드 이미지 + 하단 그라디언트 + 캡션
+  - RENDER_CAPTION       3D 렌더/평면도 + 떠있는 캡션
+  - CIRCULAR_PHOTO_FLOW  원형 사진 타임라인
+  - CREDENTIAL_STAGE     STAGE 배지 + 사진 + 본문 카드
+  - CHEVRON_CONNECTOR    카드 사이 작은 » 연결자
+
+슬라이드 템플릿:
+  - slide_divider_hero   거의 빈 다크 + 80pt+ 영문
+  - slide_hook_question  배경사진 + 거대 질문 + stat row
+  - slide_summary_split  좌측 정보 + 우측 IP 영역
+  - slide_cover_editorial IP풀블리드 + 타이틀
+"""
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / SZ 티어 정정 — 레퍼런스 실측 기반
+# ───────────────────────────────────────────────────────────────
+
+SZ.update({
+    # 레퍼런스 실측 반영 (v4.0 예상치 정정)
+    "eyebrow":      12,   # 섹션 마커 대문자 라벨 ("ACTION PLAN") — 원래 13
+    "pre_headline": 18,   # 헤드라인 위 리드 문장
+    "headline":     36,   # 슬라이드 메인 헤드라인
+    "sub_headline": 22,   # 부 헤드라인
+    "stat_big":     72,   # 3-열 stat row (160명/48H/50+)
+    "stat_hero_v41": 96,  # 단일 거대 수치
+    "section_hero": 100,  # 섹션 디바이더 영문 (ACTION PLAN)
+    "eod":          120,  # E.O.D 최대 크기
+    "body_reading": 14,   # 일반 본문 (촘촘하지 않은)
+})
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / editorial_dark 테마
+# ───────────────────────────────────────────────────────────────
+
+THEMES["editorial_dark"] = {
+    "primary":   (95, 112, 252),    # 5F70FC 퍼플 — 악센트 바, 쉐브론
+    "secondary": (102, 255, 255),   # 66FFFF 사이언 — eyebrow 전용
+    "teal":      (105, 226, 255),   # 69E2FF
+    "accent":    (255, 80, 80),     # 레드 — 크리티컬 강조만
+    "dark":      (28, 31, 40),      # 1C1F28 딥 네이비 BG
+    "light":     (242, 245, 250),   # F2F5FA 페이퍼 라이트
+}
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 배경 스타일
+# ───────────────────────────────────────────────────────────────
+
+def bg_editorial_dark(s, variant="deep"):
+    """에디토리얼 다크 배경 — 순수 다크 또는 살짝 그라디언트.
+
+    레퍼런스처럼 "거의 플랫 + 미묘한 그라디언트"가 핵심.
+    과한 그라디언트는 저급해보임.
+    """
+    if variant == "deep":
+        # 순수 플랫 다크 (대부분의 콘텐츠 슬라이드)
+        bg(s, tok("surface/darker"))
+    elif variant == "subtle":
+        # 미묘한 그라디언트 (디바이더/표지에만)
+        gradient_bg(s, tok("surface/darker"), tok("surface/dark"))
+    elif variant == "spotlight":
+        # 상단 살짝 밝게 (히어로 슬라이드)
+        gradient_bg(s, tok("surface/dark"), tok("surface/darker"))
+    return s
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 1. HEADLINE_STACK — 표준 타이포 리듬
+# ───────────────────────────────────────────────────────────────
+
+def HEADLINE_STACK(s, *, eyebrow="", pre="", headline="", sub="",
+                    x_in=None, y_in=None, w_in=None,
+                    on_dark=True, align="left", eyebrow_color=None):
+    """에디토리얼 다크의 표준 타이포 스택.
+
+    레퍼런스 장표 거의 모든 콘텐츠 슬라이드의 상단 영역.
+
+    Layout:
+        [EYEBROW]  ← 사이언 대문자 12pt (섹션 마커)
+        pre text  ← 헤드라인 위 가벼운 리드 18pt 회색
+        HEADLINE  ← 36pt 흰색 볼드 (메인 메시지)
+        subtitle  ← 22pt 회색 (부가)
+
+    Args:
+        eyebrow: 섹션 마커 (대문자 권장, 예: "ACTION PLAN")
+        pre: 헤드라인 위 리드 문장
+        headline: 메인 헤드라인
+        sub: 서브
+        on_dark: 다크 배경 여부
+        w_in: None이면 CW
+    """
+    if x_in is None:
+        x_in = ML_IN
+    if y_in is None:
+        y_in = round(float(SH / 914400) * 0.085, 3)  # 상단 8.5%
+    if w_in is None:
+        w_in = CW_IN
+    eyebrow_c = eyebrow_color or tok("secondary" if on_dark else "brand/primary")
+    headline_c = tok("text/on_dark") if on_dark else tok("text/on_light")
+    pre_c = tok("text/muted")
+    sub_c = tok("text/muted")
+
+    al = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER,
+          "right": PP_ALIGN.RIGHT}[align]
+
+    y = y_in
+    # 한글 너비 추정 (일반 sans 기준): 폰트 pt * 0.056 inch/char
+    def _fits_one_line(text, pt, w):
+        if not text:
+            return True
+        char_w = pt * 0.056  # 대략치
+        return len(text) * char_w <= w - 0.1
+
+    # Eyebrow
+    if eyebrow:
+        t = T(s, Inches(x_in), Inches(y), Inches(w_in), Inches(0.35),
+              eyebrow.upper(), sz=SZ["eyebrow"], c=eyebrow_c, b=True,
+              al=al, fn=FONT_W["bold"])
+        try:
+            set_char_spacing(t, 200)
+        except Exception:
+            pass
+        y += 0.45
+
+    # Pre-headline — 1줄 또는 2줄 자동 감지
+    if pre:
+        # 18pt → ~1.01 inch/char × len
+        pre_lines = 1 if _fits_one_line(pre, SZ["pre_headline"], w_in) else 2
+        pre_h = 0.45 * pre_lines
+        T(s, Inches(x_in), Inches(y), Inches(w_in), Inches(pre_h),
+          pre, sz=SZ["pre_headline"], c=pre_c,
+          al=al, fn=FONT_W["regular"])
+        y += pre_h + 0.1
+
+    # Headline — 길이 기반 자동 크기 조절 + 공간 확보
+    if headline:
+        # 기본 36pt → 길면 32pt, 더 길면 28pt
+        hl_sz = SZ["headline"]
+        if len(headline) > 28:
+            hl_sz = 32
+        if len(headline) > 38:
+            hl_sz = 28
+        # 줄 수 예측 (컨테이너 폭 기준)
+        hl_lines = 1 if _fits_one_line(headline, hl_sz, w_in) else 2
+        hl_h = (hl_sz / 72) * 1.3 * hl_lines  # line height 1.3x
+        T(s, Inches(x_in), Inches(y), Inches(w_in), Inches(hl_h + 0.1),
+          headline, sz=hl_sz, c=headline_c, b=True,
+          al=al, fn=FONT_W["bold"])
+        y += hl_h + 0.2
+
+    # Sub
+    if sub:
+        sub_lines = 1 if _fits_one_line(sub, SZ["sub_headline"], w_in) else 2
+        sub_h = 0.4 * sub_lines + 0.1
+        T(s, Inches(x_in), Inches(y), Inches(w_in), Inches(sub_h),
+          sub, sz=SZ["sub_headline"], c=sub_c,
+          al=al, fn=FONT_W["medium"])
+        y += sub_h + 0.1
+
+    return y  # 다음 요소의 시작 Y
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 2. PHOTO_CARD_TRIO — 메인 워크호스
+# ───────────────────────────────────────────────────────────────
+
+def PHOTO_CARD_TRIO(s, items, *, y_in=3.0, h_in=4.3,
+                     on_dark=True, gap_in=0.25,
+                     label_colors=None, img_ratio=None):
+    """3열 포토 카드 — 레퍼런스 콘텐츠 슬라이드의 80%.
+
+    각 카드 구조:
+      [포토 영역 60%]          ← IMG_PH 또는 실제 이미지
+      [컬러 라벨 바 2px]        ← 카테고리 구분용
+      [영문 제목 (대문자)]       ← label (카드 타이틀)
+      [한글 세부 설명]          ← body
+
+    Args:
+        items: [{"img": path?, "label": "GAME DEV",
+                 "title": "160명의 개발자", "body": "진짜 게임 개발..."}, ...]
+        label_colors: 각 라벨 바 색상 리스트. None이면 브랜드 퍼플 통일.
+    """
+    n = min(3, len(items))
+    l_start = ML_IN
+    w_total = CW_IN
+    each_w = (w_total - gap_in * (n - 1)) / n
+
+    if label_colors is None:
+        label_colors = [tok("brand/primary")] * n
+
+    # 이미지 비율 자동 결정: h_in에 따라 동적 (카드 작으면 텍스트 공간 확보)
+    if img_ratio is None:
+        if h_in < 3.0:
+            img_ratio = 0.42   # 작은 카드 → 텍스트 우선
+        elif h_in < 4.0:
+            img_ratio = 0.48
+        else:
+            img_ratio = 0.52
+
+    img_h = h_in * img_ratio
+
+    for i, item in enumerate(items[:3]):
+        x = l_start + i * (each_w + gap_in)
+
+        # 포토 영역
+        if item.get("img"):
+            # 실제 이미지가 있으면 insert
+            try:
+                s.shapes.add_picture(item["img"], Inches(x), Inches(y_in),
+                                      Inches(each_w), Inches(img_h))
+            except Exception:
+                # fallback: placeholder
+                IMG_PH(s, Inches(x), Inches(y_in), Inches(each_w), Inches(img_h), label=item.get("label", "이미지"))
+        else:
+            IMG_PH(s, Inches(x), Inches(y_in), Inches(each_w), Inches(img_h), label=item.get("label", "이미지"))
+
+        # 컬러 라벨 바 (포토와 텍스트 경계)
+        bar_color = label_colors[i % len(label_colors)]
+        R(s, Inches(x), Inches(y_in + img_h),
+          Inches(each_w), Inches(0.04), bar_color)
+
+        # 카드 내 가용 공간 (이미지 아래 전체)
+        card_text_h = h_in - img_h - 0.12
+
+        # 영문 라벨 (작게, 타이트한 간격)
+        lab_h_fix = 0.28
+        lab_y = y_in + img_h + 0.12
+        if item.get("label"):
+            T(s, Inches(x), Inches(lab_y),
+              Inches(each_w), Inches(lab_h_fix),
+              item["label"].upper(),
+              sz=SZ["eyebrow"], c=bar_color, b=True,
+              al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
+            lab_y += lab_h_fix + 0.02
+            card_text_h -= lab_h_fix + 0.02
+
+        # 3분할: 라벨 제외 나머지를 title:body = 40:60 비율
+        #   작은 카드는 title을 더 작게, 큰 카드는 넉넉히
+        title_slot = card_text_h * 0.42
+        body_slot  = card_text_h - title_slot - 0.05
+
+        # 한글 타이틀 — title_slot에 맞춰 폰트 자동 축소
+        if item.get("title"):
+            t_sz = SZ["sub_headline"]
+            title_lines = item["title"].count("\n") + 1
+            char_w = t_sz * 0.056
+            per_line = max(1, int((each_w - 0.05) / char_w))
+            longest = max(len(ln) for ln in item["title"].split("\n")) \
+                        if item["title"] else 0
+            if longest > per_line:
+                title_lines += 1
+            # 폰트 축소
+            needed = (t_sz / 72) * 1.3 * title_lines
+            while needed > title_slot and t_sz > 10:
+                t_sz -= 1
+                needed = (t_sz / 72) * 1.3 * title_lines
+            T(s, Inches(x), Inches(lab_y),
+              Inches(each_w), Inches(title_slot),
+              item["title"],
+              sz=t_sz, b=True,
+              c=tok("text/on_dark") if on_dark else tok("text/on_light"),
+              al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
+            lab_y += title_slot + 0.05
+
+        # 본문 — body_slot 기반, 폰트 자동 축소
+        if item.get("body"):
+            body_h = min(body_slot, y_in + h_in - lab_y - 0.05)
+            if body_h < 0.2:
+                continue
+            b_sz = SZ["body_reading"]
+            body_chars = len(item["body"])
+            per_line_b = max(1, int((each_w - 0.1) / (b_sz * 0.056)))
+            body_lines = max(1, (body_chars // per_line_b) + 1)
+            needed_h = (b_sz / 72) * 1.35 * body_lines
+            while needed_h > body_h and b_sz > 8:
+                b_sz -= 1
+                per_line_b = max(1, int((each_w - 0.1) / (b_sz * 0.056)))
+                body_lines = max(1, (body_chars // per_line_b) + 1)
+                needed_h = (b_sz / 72) * 1.35 * body_lines
+            T(s, Inches(x), Inches(lab_y),
+              Inches(each_w), Inches(body_h),
+              item["body"],
+              sz=b_sz,
+              c=tok("text/muted"),
+              al=PP_ALIGN.LEFT, fn=FONT_W["regular"])
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 3. STAT_ROW_HERO — 거대 수치 3열
+# ───────────────────────────────────────────────────────────────
+
+def STAT_ROW_HERO(s, items, *, y_in=3.5, h_in=2.2,
+                   on_dark=True, show_dividers=False, value_sz=None):
+    """3개 거대 수치 가로 배치 (160명 | 48H | 50+).
+
+    레퍼런스 Hook 슬라이드의 핵심 장치.
+
+    items: [{"value": "160명", "label": "총 참가자",
+              "desc": "대학(원)생 + 일반 창작자"}, ...]
+
+    컨테이너 높이:
+      - val_h = 폰트크기 × 1.25 / 72 (line-height 여유)
+      - 전체 h_in 이상이면 폰트 자동 축소
+    """
+    n = len(items)
+    l_start = ML_IN
+    w_total = CW_IN
+    each_w = w_total / n
+    div_w = 0.01
+
+    # 폰트 크기 자동 결정
+    v_sz = value_sz or SZ["stat_big"]  # 72pt
+    # 긴 값 (8자+)은 60pt로 다운
+    max_val_len = max(len(str(it.get("value", ""))) for it in items) if items else 0
+    if max_val_len >= 8:
+        v_sz = 54
+    elif max_val_len >= 6:
+        v_sz = 64
+
+    # 컨테이너 높이 = 폰트 인치 + 라벨 + 설명 + 여백
+    val_h = (v_sz / 72) * 1.3    # 약 1.3" at 72pt
+    label_h = 0.35
+    desc_h = 0.35
+    needed_h = val_h + 0.1 + label_h + 0.05 + desc_h
+    # h_in이 부족하면 값 폰트 축소
+    if needed_h > h_in:
+        v_sz = int(v_sz * (h_in / needed_h) * 0.95)
+        val_h = (v_sz / 72) * 1.3
+
+    value_color = tok("text/on_dark") if on_dark else tok("text/on_light")
+    label_color = tok("secondary")
+    desc_color = tok("text/muted")
+
+    for i, item in enumerate(items):
+        x = l_start + i * each_w
+
+        # 구분선
+        if show_dividers and i > 0:
+            R(s, Inches(x - div_w/2), Inches(y_in + 0.3),
+              Inches(div_w), Inches(h_in - 0.6),
+              tok("border/dark"))
+
+        # 큰 수치
+        val_box = s.shapes.add_textbox(Inches(x), Inches(y_in),
+                                        Inches(each_w), Inches(val_h))
+        tf = val_box.text_frame
+        tf.margin_left = tf.margin_right = Inches(0.05)
+        tf.margin_top = tf.margin_bottom = Inches(0)
+        tf.word_wrap = False
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = str(item["value"])
+        run.font.name = FONT_W["black"]
+        run.font.size = Pt(v_sz)
+        run.font.color.rgb = value_color
+        run.font.bold = True
+
+        # 라벨 (사이언 작게)
+        lab_y = y_in + val_h + 0.1
+        lab_box = s.shapes.add_textbox(Inches(x), Inches(lab_y),
+                                        Inches(each_w), Inches(label_h))
+        lp = lab_box.text_frame
+        lp.margin_left = lp.margin_right = Inches(0.05)
+        lp2 = lp.paragraphs[0]
+        lp2.alignment = PP_ALIGN.CENTER
+        lrun = lp2.add_run()
+        lrun.text = item.get("label", "")
+        lrun.font.name = FONT_W["semibold"]
+        lrun.font.size = Pt(SZ["label"])
+        lrun.font.color.rgb = label_color
+
+        # 설명
+        if item.get("desc"):
+            d_box = s.shapes.add_textbox(Inches(x), Inches(lab_y + label_h + 0.02),
+                                          Inches(each_w), Inches(desc_h))
+            dtf = d_box.text_frame
+            dtf.margin_left = dtf.margin_right = Inches(0.05)
+            dp = dtf.paragraphs[0]
+            dp.alignment = PP_ALIGN.CENTER
+            dr = dp.add_run()
+            dr.text = item["desc"]
+            dr.font.name = FONT_W["regular"]
+            dr.font.size = Pt(SZ["caption_sm"])
+            dr.font.color.rgb = desc_color
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 4. DATA_TABLE_DARK — 다크 배경 표
+# ───────────────────────────────────────────────────────────────
+
+def DATA_TABLE_DARK(s, headers, rows, *, x_in=0.7, y_in=1.8,
+                     w_in=11.95, row_h_in=0.4,
+                     header_color=None, highlight_col=None):
+    """다크 배경 전용 표 — 레퍼런스의 Time Table, Staff Plan 스타일.
+
+    - 헤더: 브랜드 퍼플 배경 + 흰 글자
+    - 바디: 투명 배경 + 서브틀 보더
+    - 여유 있는 행 높이
+    """
+    header_color = header_color or tok("brand/primary")
+    n_cols = len(headers)
+    n_rows = len(rows)
+
+    # python-pptx add_table
+    cols_w = [w_in / n_cols] * n_cols
+    tot_rows = 1 + n_rows
+    total_h = row_h_in * tot_rows
+
+    tbl_shape = s.shapes.add_table(tot_rows, n_cols,
+                                     Inches(x_in), Inches(y_in),
+                                     Inches(w_in), Inches(total_h))
+    tbl = tbl_shape.table
+
+    # 행 높이 설정
+    for r in range(tot_rows):
+        tbl.rows[r].height = Inches(row_h_in)
+
+    # 헤더
+    for c, h in enumerate(headers):
+        cell = tbl.cell(0, c)
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = header_color
+        tf = cell.text_frame
+        tf.margin_left = Inches(0.15)
+        tf.margin_right = Inches(0.1)
+        tf.margin_top = tf.margin_bottom = Inches(0.08)
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = str(h)
+        run.font.name = FONT_W["bold"]
+        run.font.size = Pt(SZ["fine"])
+        run.font.color.rgb = tok("text/on_dark")
+        run.font.bold = True
+
+    # 바디
+    for r, row in enumerate(rows):
+        for c, val in enumerate(row):
+            cell = tbl.cell(r + 1, c)
+            cell.fill.solid()
+            if highlight_col is not None and c == highlight_col:
+                cell.fill.fore_color.rgb = tok("surface/dark")
+            else:
+                cell.fill.fore_color.rgb = tok("surface/darker")
+
+            tf = cell.text_frame
+            tf.margin_left = Inches(0.15)
+            tf.margin_right = Inches(0.1)
+            tf.margin_top = tf.margin_bottom = Inches(0.08)
+            p = tf.paragraphs[0]
+            p.alignment = PP_ALIGN.CENTER if c == 0 else PP_ALIGN.LEFT
+            run = p.add_run()
+            run.text = str(val)
+            run.font.name = FONT_W["regular"]
+            run.font.size = Pt(SZ["body_reading"])
+            run.font.color.rgb = tok("text/on_dark")
+
+    return tbl_shape
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 5. PHOTO_FULL_OVERLAY — 풀블리드 사진 + 하단 그라디언트
+# ───────────────────────────────────────────────────────────────
+
+def PHOTO_FULL_OVERLAY(s, image_path=None, *, caption="", sub_caption="",
+                        overlay_strength=65, overlay_color=None):
+    """풀블리드 이미지 + 하단 그라디언트 오버레이 + 캡션.
+
+    레퍼런스 실적 슬라이드(60p) 패턴.
+    image_path 없으면 IMG_PH로 자리만 잡음.
+    """
+    # 이미지
+    if image_path:
+        try:
+            s.shapes.add_picture(image_path, Inches(0), Inches(0),
+                                  width=SW, height=SH)
+        except Exception:
+            IMG_PH(s, Inches(0), Inches(0), SW, SH, label=caption or "Photo")
+    else:
+        IMG_PH(s, Inches(0), Inches(0), SW, SH, label=caption or "Photo")
+
+    # 하단 그라디언트 오버레이 (캔버스 비율 기반)
+    overlay_color = overlay_color or tok("surface/darker")
+    _sh = float(SH / 914400)
+    overlay_h = _sh * 0.37
+    overlay = R(s, Inches(0), Inches(_sh - overlay_h),
+                 SW, Inches(overlay_h), overlay_color)
+    gradient_shape(overlay, overlay_color, overlay_color,
+                    angle=5400000)
+    add_alpha(overlay, 100 - overlay_strength)
+
+    # 캡션 (비율 기반 하단 배치)
+    if caption:
+        T(s, Inches(ML_IN), Inches(_sh * 0.813), Inches(CW_IN),
+          Inches(_sh * 0.1),
+          caption, sz=SZ["headline"], c=tok("text/on_dark"), b=True,
+          fn=FONT_W["bold"], al=PP_ALIGN.LEFT)
+
+    # 부캡션
+    if sub_caption:
+        T(s, Inches(ML_IN), Inches(_sh * 0.907), Inches(CW_IN),
+          Inches(_sh * 0.06),
+          sub_caption, sz=SZ["label"], c=tok("text/muted"),
+          fn=FONT_W["regular"], al=PP_ALIGN.LEFT)
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 6. RENDER_CAPTION — 렌더/평면도 + 캡션
+# ───────────────────────────────────────────────────────────────
+
+def RENDER_CAPTION(s, image_path=None, *, title="", caption="",
+                    accent_note="", image_area=(0.7, 1.5, 11.95, 4.5),
+                    on_dark=True):
+    """공간 렌더 or 평면도 + 하단 캡션 카드.
+
+    레퍼런스: Developer Room(42p), Info Desk(40p), Space Design(38p).
+    """
+    l, t, w, h = image_area
+    if image_path:
+        try:
+            s.shapes.add_picture(image_path, Inches(l), Inches(t),
+                                  Inches(w), Inches(h))
+        except Exception:
+            IMG_PH(s, Inches(l), Inches(t), Inches(w), Inches(h), label=title or "Render")
+    else:
+        IMG_PH(s, Inches(l), Inches(t), Inches(w), Inches(h), label=title or "Render")
+
+    # 캡션 영역
+    cap_y = t + h + 0.3
+
+    if title:
+        T(s, Inches(l), Inches(cap_y), Inches(w), Inches(0.4),
+          title, sz=SZ["sub_headline"],
+          c=tok("text/on_dark") if on_dark else tok("text/on_light"),
+          b=True, fn=FONT_W["bold"], al=PP_ALIGN.LEFT)
+
+    if caption:
+        T(s, Inches(l), Inches(cap_y + 0.5), Inches(w), Inches(0.4),
+          caption, sz=SZ["body_reading"],
+          c=tok("text/muted"),
+          fn=FONT_W["regular"], al=PP_ALIGN.LEFT)
+
+    if accent_note:
+        # 우측 상단 작은 노트 (레퍼런스 "※ 넥슨 지하 1층 교실 이용")
+        T(s, Inches(SW/914400 - 3.0), Inches(t + h + 0.3),
+          Inches(2.8), Inches(0.3),
+          "※ " + accent_note, sz=SZ["caption_sm"],
+          c=tok("text/subtle"), al=PP_ALIGN.RIGHT)
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 7. CIRCULAR_PHOTO_FLOW — 원형 사진 타임라인
+# ───────────────────────────────────────────────────────────────
+
+def CIRCULAR_PHOTO_FLOW(s, items, *, y_in=3.2, circle_d=1.6,
+                         arrow_color=None):
+    """원형 사진 + 화살표 타임라인 — 레퍼런스 Event Flow(30p) 패턴.
+
+    items: [{"img": path?, "stage": "STAGE 1", "title": "참가 접수",
+              "time": "1월 19:00~20:00"}, ...]
+    """
+    arrow_color = arrow_color or tok("brand/primary")
+    n = len(items)
+    # 4개 기준 설계
+    l_start = ML_IN
+    w_total = CW_IN
+    each_w = w_total / n
+
+    for i, item in enumerate(items):
+        cx = l_start + i * each_w + each_w / 2 - circle_d / 2
+
+        # 원형 사진
+        if item.get("img"):
+            try:
+                pic = s.shapes.add_picture(item["img"], Inches(cx),
+                                            Inches(y_in),
+                                            Inches(circle_d),
+                                            Inches(circle_d))
+                # 원형 크롭 (라운드 100%)
+                # python-pptx는 도형 변환이 제한적. 원형 프레임 오버레이
+                frame = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(cx),
+                                            Inches(y_in), Inches(circle_d),
+                                            Inches(circle_d))
+                frame.fill.background()
+                frame.line.color.rgb = arrow_color
+                frame.line.width = Pt(2.5)
+            except Exception:
+                oval = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(cx),
+                                           Inches(y_in), Inches(circle_d),
+                                           Inches(circle_d))
+                oval.fill.solid()
+                oval.fill.fore_color.rgb = tok("surface/dark")
+                oval.line.color.rgb = arrow_color
+                oval.line.width = Pt(2.5)
+        else:
+            oval = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(cx),
+                                       Inches(y_in), Inches(circle_d),
+                                       Inches(circle_d))
+            oval.fill.solid()
+            oval.fill.fore_color.rgb = tok("surface/dark")
+            oval.line.color.rgb = arrow_color
+            oval.line.width = Pt(2.5)
+
+        # 스테이지 라벨 (원 위)
+        if item.get("stage"):
+            T(s, Inches(l_start + i * each_w), Inches(y_in - 0.5),
+              Inches(each_w), Inches(0.4),
+              item["stage"], sz=SZ["eyebrow"],
+              c=arrow_color, b=True, al=PP_ALIGN.CENTER,
+              fn=FONT_W["bold"])
+
+        # 타이틀 (원 아래)
+        label_y = y_in + circle_d + 0.15
+        if item.get("title"):
+            T(s, Inches(l_start + i * each_w), Inches(label_y),
+              Inches(each_w), Inches(0.4),
+              item["title"], sz=SZ["sub_headline"],
+              c=tok("text/on_dark"), b=True,
+              al=PP_ALIGN.CENTER, fn=FONT_W["bold"])
+
+        # 시간
+        if item.get("time"):
+            T(s, Inches(l_start + i * each_w), Inches(label_y + 0.45),
+              Inches(each_w), Inches(0.3),
+              item["time"], sz=SZ["caption_sm"],
+              c=tok("text/muted"), al=PP_ALIGN.CENTER)
+
+        # 화살표 (다음 요소 연결)
+        if i < n - 1:
+            arrow_x = l_start + (i + 1) * each_w - 0.3
+            arrow_y = y_in + circle_d / 2 - 0.15
+            CHEVRON_CONNECTOR(s, arrow_x, arrow_y, 0.5, 0.3,
+                                color=arrow_color)
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 8. CHEVRON_CONNECTOR — 작은 » 연결자
+# ───────────────────────────────────────────────────────────────
+
+def CHEVRON_CONNECTOR(s, x_in, y_in, w_in=0.5, h_in=0.3, *, color=None):
+    """카드 사이의 작은 쉐브론 연결자 (>> 느낌).
+
+    레퍼런스 Check Point(5p), Communication(55p)에서 카드 그룹 사이.
+    """
+    color = color or tok("brand/primary")
+    # 2개 겹치는 쉐브론으로 »
+    ch1 = s.shapes.add_shape(MSO_SHAPE.CHEVRON, Inches(x_in), Inches(y_in),
+                              Inches(w_in * 0.5), Inches(h_in))
+    ch1.fill.solid()
+    ch1.fill.fore_color.rgb = color
+    ch1.line.fill.background()
+    ch2 = s.shapes.add_shape(MSO_SHAPE.CHEVRON,
+                              Inches(x_in + w_in * 0.3), Inches(y_in),
+                              Inches(w_in * 0.5), Inches(h_in))
+    ch2.fill.solid()
+    ch2.fill.fore_color.rgb = color
+    ch2.line.fill.background()
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 9. CREDENTIAL_STAGE — START/GROW/EVOLVE 카드
+# ───────────────────────────────────────────────────────────────
+
+def CREDENTIAL_STAGE(s, items, *, y_in=2.6, h_in=3.8, stage_colors=None):
+    """실적 단계 카드 — START 2016 / GROW / EVOLVE 2026 패턴.
+
+    레퍼런스 NYPC 2016(7p) 스타일.
+
+    items: [{"stage": "START, 2016", "title": "시작",
+              "body": "...", "img": path?}, ...]
+    """
+    n = min(3, len(items))
+    if stage_colors is None:
+        stage_colors = [tok("brand/primary"), tok("brand/secondary"),
+                         tok("secondary")]
+    l_start = ML_IN
+    w_total = CW_IN
+    gap = 0.2
+    each_w = (w_total - gap * (n - 1)) / n
+
+    for i, item in enumerate(items[:3]):
+        x = l_start + i * (each_w + gap)
+        color = stage_colors[i % len(stage_colors)]
+
+        # 사진 (상단 60%)
+        img_h = h_in * 0.6
+        if item.get("img"):
+            try:
+                s.shapes.add_picture(item["img"], Inches(x), Inches(y_in),
+                                      Inches(each_w), Inches(img_h))
+            except Exception:
+                IMG_PH(s, Inches(x), Inches(y_in), Inches(each_w), Inches(img_h), label=item.get("stage", "이미지"))
+        else:
+            IMG_PH(s, Inches(x), Inches(y_in), Inches(each_w), Inches(img_h), label=item.get("stage", "이미지"))
+
+        # 스테이지 배지 (포토 하단에 겹치게) — BADGE로 상하좌우 중앙정렬 보장
+        badge_y = y_in + img_h - 0.3
+        BADGE(s, x + 0.3, badge_y, 2.0, 0.5,
+              item.get("stage", "").upper(),
+              fill=color, sz_pt=SZ["label"])
+
+        # 제목 (뱃지 아래, 적당한 gap)
+        title_y = y_in + img_h + 0.3
+        title_h_fix = 0.4
+        T(s, Inches(x), Inches(title_y),
+          Inches(each_w), Inches(title_h_fix),
+          item.get("title", ""), sz=SZ["sub_headline"],
+          c=tok("text/on_dark"), b=True,
+          al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
+
+        # 본문 — 남은 공간에 맞춤
+        body_y = title_y + title_h_fix + 0.05
+        body_h = (y_in + h_in) - body_y - 0.05
+        if body_h < 0.2:
+            continue
+        # 폰트 자동 축소 for overflow 방지
+        b_sz = SZ["body_reading"]
+        char_w = b_sz * 0.056
+        per_line = max(1, int((each_w - 0.1) / char_w))
+        body_lines = max(1, (len(item.get("body", "")) // per_line) + 1)
+        needed = (b_sz / 72) * 1.35 * body_lines
+        while needed > body_h and b_sz > 9:
+            b_sz -= 1
+            char_w = b_sz * 0.056
+            per_line = max(1, int((each_w - 0.1) / char_w))
+            body_lines = max(1, (len(item.get("body", "")) // per_line) + 1)
+            needed = (b_sz / 72) * 1.35 * body_lines
+        T(s, Inches(x), Inches(body_y),
+          Inches(each_w), Inches(body_h),
+          item.get("body", ""), sz=b_sz,
+          c=tok("text/muted"),
+          al=PP_ALIGN.LEFT, fn=FONT_W["regular"])
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 10. slide_divider_hero — 여백 디바이더
+# ───────────────────────────────────────────────────────────────
+
+def slide_divider_hero(prs, eng_title, kr_subtitle="", tagline="",
+                         *, pg=None, variant="subtle"):
+    """거대 영문 + 여백 80% 섹션 디바이더.
+
+    레퍼런스 ACTION PLAN(15), MANAGEMENT(48), APPENDIX(58), E.O.D(65).
+
+    Args:
+        eng_title: 대형 영문 (대문자 권장)
+        kr_subtitle: 아래 작은 한글 부제
+        tagline: 더 아래 한 줄 사이언 태그
+        variant: 배경 그라디언트 스타일
+    """
+    s = new_slide(prs)
+    bg_editorial_dark(s, variant=variant)
+    _sh = float(SH / 914400)
+
+    # 영문 대형 — 수직 중앙에서 약간 위 (비율: 2.9/7.5 = 0.387)
+    y_title = _sh * 0.387
+    title_h = _sh * 0.20   # 1.5/7.5
+    T(s, Inches(ML_IN), Inches(y_title), Inches(CW_IN), Inches(title_h),
+      eng_title.upper(), sz=SZ["section_hero"],
+      c=tok("text/on_dark"), b=True,
+      al=PP_ALIGN.LEFT, fn=FONT_W["black"])
+
+    # 한글 부제 (영문 바로 아래)
+    if kr_subtitle:
+        T(s, Inches(ML_IN + 0.05), Inches(y_title + title_h + 0.05),
+          Inches(CW_IN), Inches(_sh * 0.07),
+          kr_subtitle, sz=SZ["sub_headline"],
+          c=tok("text/on_dark"), b=True,
+          al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
+
+    # 사이언 태그라인
+    if tagline:
+        T(s, Inches(ML_IN + 0.05), Inches(y_title + title_h + _sh * 0.1),
+          Inches(CW_IN), Inches(_sh * 0.06),
+          tagline, sz=SZ["label"],
+          c=tok("secondary"),
+          al=PP_ALIGN.LEFT, fn=FONT_W["regular"])
+
+    if pg is not None:
+        # 우하단 작게
+        T(s, Inches(SW/914400 - 0.85), Inches(SH/914400 - 0.4), Inches(0.7), Inches(0.3),
+          str(pg), sz=SZ["caption_sm"],
+          c=tok("text/muted"), al=PP_ALIGN.RIGHT)
+
+    return s
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 11. slide_hook_question — 배경사진 + 거대 질문
+# ───────────────────────────────────────────────────────────────
+
+def slide_hook_question(prs, question, *, stats=None, bg_image=None,
+                          sub="", pg=None):
+    """HOOK 슬라이드 — 거대 질문 + 배경 사진 + 3개 통계.
+
+    레퍼런스 WHY MAKERTHON?(2p) 패턴.
+
+    Args:
+        question: 거대 질문 (대문자 권장)
+        stats: [{"value": "160명", "label": "총 참가자"}, ...] 3개
+        bg_image: 배경 사진 경로
+        sub: 질문 아래 작은 설명
+    """
+    s = new_slide(prs)
+
+    # 배경 사진 (풀블리드)
+    if bg_image:
+        try:
+            s.shapes.add_picture(bg_image, Inches(0), Inches(0),
+                                  width=SW, height=SH)
+        except Exception:
+            bg_editorial_dark(s, "subtle")
+    else:
+        bg_editorial_dark(s, "subtle")
+
+    # 다크 오버레이 (가독성)
+    overlay = R(s, Inches(0), Inches(0), SW, SH, tok("surface/darker"))
+    add_alpha(overlay, 35)  # 65% 불투명
+
+    # 캔버스 크기 기반 비율 배치
+    _sh = float(SH / 914400)
+    _sw = float(SW / 914400)
+
+    # 상단 eyebrow
+    T(s, Inches(ML_IN), Inches(_sh * 0.07), Inches(CW_IN), Inches(0.3),
+      "WHY ?", sz=SZ["eyebrow"],
+      c=tok("secondary"), b=True,
+      al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
+
+    # 거대 질문 — 캔버스 크기 + 텍스트 길이 기반 스케일
+    base_q_sz = 72 if len(question) <= 15 else (56 if len(question) <= 25 else 44)
+    q_sz = int(base_q_sz * (_sw / 13.333))   # 캔버스에 맞춤
+    T(s, Inches(ML_IN), Inches(_sh * 0.18), Inches(CW_IN), Inches(_sh * 0.25),
+      question.upper(), sz=q_sz,
+      c=tok("text/on_dark"), b=True,
+      al=PP_ALIGN.LEFT, fn=FONT_W["black"])
+
+    # 설명
+    if sub:
+        T(s, Inches(ML_IN), Inches(_sh * 0.43), Inches(CW_IN), Inches(_sh * 0.15),
+          sub, sz=SZ["body_reading"],
+          c=tok("text/on_dark"),
+          al=PP_ALIGN.LEFT, fn=FONT_W["regular"])
+
+    # 3 stats — 남은 하단 공간에 맞춤 (페이지번호 영역 제외)
+    if stats:
+        stat_y = _sh * 0.60
+        stat_h = _sh * 0.34   # 20~94% 사이
+        STAT_ROW_HERO(s, stats, y_in=stat_y, h_in=stat_h,
+                       on_dark=True, show_dividers=True)
+
+    if pg is not None:
+        T(s, Inches(SW/914400 - 0.85), Inches(SH/914400 - 0.4), Inches(0.7), Inches(0.3),
+          str(pg), sz=SZ["caption_sm"],
+          c=tok("text/muted"), al=PP_ALIGN.RIGHT)
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 12. slide_summary_split — 좌측 정보 + 우측 IP 영역
+# ───────────────────────────────────────────────────────────────
+
+def slide_summary_split(prs, *, title="", info_blocks=None,
+                          ip_image=None, pg=None):
+    """SUMMARY 슬라이드 — 좌측 키/밸류 + 우측 IP 일러스트.
+
+    레퍼런스 SUMMARY(16p) 패턴.
+
+    info_blocks: [("행사명", "2026 메이플스토리 월드 메커톤"), ...]
+    """
+    s = new_slide(prs)
+    bg_editorial_dark(s, "deep")
+
+    # 상단 eyebrow
+    T(s, Inches(ML_IN), Inches(0.7), Inches(CW_IN), Inches(0.3),
+      "SUMMARY", sz=SZ["eyebrow"],
+      c=tok("secondary"), b=True,
+      al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
+
+    # 좌측 정보 블록
+    left_x = 0.7
+    left_w = 6.5
+    y = 1.4
+    if info_blocks:
+        for key, val in info_blocks:
+            # 라벨
+            T(s, Inches(left_x), Inches(y), Inches(left_w), Inches(0.35),
+              key, sz=SZ["label"], c=tok("secondary"),
+              b=True, fn=FONT_W["bold"])
+            # 값
+            T(s, Inches(left_x), Inches(y + 0.4), Inches(left_w),
+              Inches(0.5),
+              val, sz=SZ["sub_headline"], c=tok("text/on_dark"),
+              b=True, fn=FONT_W["bold"])
+            y += 1.05
+
+    # 우측 IP 영역
+    right_x = 7.5
+    right_w = 5.5
+    if ip_image:
+        try:
+            s.shapes.add_picture(ip_image, Inches(right_x), Inches(1.2),
+                                  Inches(right_w), Inches(5.5))
+        except Exception:
+            IMG_PH(s, Inches(right_x), Inches(1.2), Inches(right_w), Inches(5.5), label="IP Visual")
+    else:
+        IMG_PH(s, Inches(right_x), Inches(1.2), Inches(right_w), Inches(5.5), label="IP Visual")
+
+    if pg is not None:
+        T(s, Inches(SW/914400 - 0.85), Inches(SH/914400 - 0.4), Inches(0.7), Inches(0.3),
+          str(pg), sz=SZ["caption_sm"],
+          c=tok("text/muted"), al=PP_ALIGN.RIGHT)
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 13. slide_cover_editorial — 에디토리얼 표지
+# ───────────────────────────────────────────────────────────────
+
+def slide_cover_editorial(prs, *, ip_image=None, title="",
+                            subtitle="", client="", date=""):
+    """표지 — IP 비주얼 풀블리드 + 하단 타이틀 블록.
+
+    레퍼런스 Cover(1p) 패턴. IP 캐릭터/비주얼이 주인공.
+    """
+    s = new_slide(prs)
+    has_ip_image = False
+
+    # 배경
+    if ip_image:
+        try:
+            s.shapes.add_picture(ip_image, Inches(0), Inches(0),
+                                  width=SW, height=SH)
+            has_ip_image = True
+        except Exception:
+            gradient_bg(s, tok("surface/dark"), tok("surface/darker"))
+    else:
+        gradient_bg(s, tok("surface/dark"), tok("surface/darker"))
+
+    _sh = float(SH / 914400)
+    if has_ip_image:
+        # IP 이미지 있음 → 하단 오버레이 + 하단 타이틀 (비율 기반)
+        overlay = R(s, Inches(0), Inches(_sh * 0.6), SW, Inches(_sh * 0.4),
+                     tok("surface/darker"))
+        add_alpha(overlay, 30)
+        title_y = _sh * 0.680
+        subtitle_y = _sh * 0.807
+        y_bot = _sh * 0.907
+    else:
+        # IP 이미지 없음 → 중앙 센터드 레이아웃
+        R(s, Inches(ML_IN), Inches(_sh * 0.27), Inches(0.8), Inches(0.04),
+          tok("brand/primary"))
+        title_y = _sh * 0.32     # 2.4 / 7.5 = 0.32
+        subtitle_y = _sh * 0.48  # 3.6 / 7.5 = 0.48
+        y_bot = _sh * 0.867      # 6.5 / 7.5
+
+    # 타이틀 — 길이 자동 스케일
+    if title:
+        title_sz = 54 if len(title) <= 22 else (42 if len(title) <= 35 else 34)
+        T(s, Inches(ML_IN), Inches(title_y), Inches(CW_IN), Inches(1.1),
+          title, sz=title_sz,
+          c=tok("text/on_dark"), b=True,
+          al=PP_ALIGN.LEFT, fn=FONT_W["black"])
+
+    # 서브타이틀
+    if subtitle:
+        T(s, Inches(ML_IN), Inches(subtitle_y), Inches(CW_IN), Inches(0.45),
+          "— " + subtitle + " —", sz=SZ["sub_headline"],
+          c=tok("secondary"),
+          al=PP_ALIGN.LEFT, fn=FONT_W["semibold"])
+
+    # 날짜 + 클라이언트 (하단)
+    if date:
+        T(s, Inches(ML_IN), Inches(y_bot), Inches(CW_IN * 0.42), Inches(0.3),
+          date, sz=SZ["label"],
+          c=tok("text/on_dark"),
+          al=PP_ALIGN.LEFT, fn=FONT_W["regular"])
+
+    if client:
+        T(s, Inches(ML_IN + CW_IN * 0.55), Inches(y_bot), Inches(CW_IN * 0.45), Inches(0.3),
+          client, sz=SZ["label"],
+          c=tok("text/on_dark"),
+          al=PP_ALIGN.RIGHT, fn=FONT_W["bold"])
+
+
+# ───────────────────────────────────────────────────────────────
+#  v4.1 / 헬퍼
+# ───────────────────────────────────────────────────────────────
+
+def BADGE(s, l_in, t_in, w_in, h_in, text, *,
+           fill=None, text_color=None, sz_pt=None, bold=True,
+           font_weight="bold"):
+    """컬러 배경 텍스트 뱃지 — 상하좌우 완전 중앙 정렬 보장.
+
+    도형(R) + 텍스트박스(T) 조합으로 발생하는 중앙정렬 틀어짐 방지.
+    도형 자체의 text_frame에 텍스트 삽입 + vertical_anchor=MIDDLE.
+    """
+    from pptx.enum.text import MSO_ANCHOR
+    fill = fill or tok("brand/primary")
+    text_color = text_color or tok("text/on_dark")
+    sz_pt = sz_pt or SZ["label"]
+
+    shape = s.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                Inches(l_in), Inches(t_in),
+                                Inches(w_in), Inches(h_in))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = fill
+    shape.line.fill.background()
+
+    tf = shape.text_frame
+    tf.margin_left = Inches(0.08)
+    tf.margin_right = Inches(0.08)
+    tf.margin_top = Inches(0.02)
+    tf.margin_bottom = Inches(0.02)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.word_wrap = True
+
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
+    run.text = text
+    run.font.name = FONT_W.get(font_weight, FONT_W["bold"])
+    run.font.size = Pt(sz_pt)
+    run.font.color.rgb = text_color
+    run.font.bold = bold
+    return shape
+
+
+def list_v41_components():
+    """v4.1 에디토리얼 다크 컴포넌트 목록."""
+    items = [
+        ("COMPONENT",  "HEADLINE_STACK",      "eyebrow+pre+headline+sub 표준 타이포"),
+        ("COMPONENT",  "PHOTO_CARD_TRIO",     "3열 포토 카드 (메인 워크호스)"),
+        ("COMPONENT",  "STAT_ROW_HERO",       "3 거대 수치 가로 배치"),
+        ("COMPONENT",  "DATA_TABLE_DARK",     "다크 배경 표"),
+        ("COMPONENT",  "PHOTO_FULL_OVERLAY",  "풀블리드 사진 + 하단 오버레이"),
+        ("COMPONENT",  "RENDER_CAPTION",      "3D 렌더 + 캡션"),
+        ("COMPONENT",  "CIRCULAR_PHOTO_FLOW", "원형 사진 타임라인"),
+        ("COMPONENT",  "CHEVRON_CONNECTOR",   "작은 » 연결자"),
+        ("COMPONENT",  "CREDENTIAL_STAGE",    "STAGE 배지 카드"),
+        ("BG",         "bg_editorial_dark",   "에디토리얼 다크 배경"),
+        ("TEMPLATE",   "slide_divider_hero",  "거대 영문 디바이더"),
+        ("TEMPLATE",   "slide_hook_question", "HOOK 질문 슬라이드"),
+        ("TEMPLATE",   "slide_summary_split", "SUMMARY 분할 슬라이드"),
+        ("TEMPLATE",   "slide_cover_editorial","IP 표지"),
+        ("THEME",      "editorial_dark",      "에디토리얼 다크 (공식 권장)"),
+    ]
+    print(f"\n=== slide_kit v{__version__} / EDITORIAL DARK ({len(items)}) ===")
+    for kind, name, desc in items:
+        print(f"  [{kind:<10}] {name:<26} {desc}")
+    print()
 
 
 # 별칭
