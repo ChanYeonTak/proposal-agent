@@ -1027,7 +1027,7 @@ def BOX(s, l, t, w, h, f, text="", sz=13, tc=None, b=False):
         setattr(tf, attr, Pt(6))
     p = tf.paragraphs[0]
     p.text = text
-    p.font.size = Pt(sz)
+    p.font.size = Pt(_snap_pt(sz))
     p.font.color.rgb = tc
     p.font.bold = b
     p.font.name = FONT
@@ -1057,7 +1057,7 @@ def OBOX(s, l, t, w, h, text="", sz=13, tc=None, b=False, lc=None):
         setattr(tf, attr, Pt(6))
     p = tf.paragraphs[0]
     p.text = text
-    p.font.size = Pt(sz)
+    p.font.size = Pt(_snap_pt(sz))
     p.font.color.rgb = tc
     p.font.bold = b
     p.font.name = FONT
@@ -1070,15 +1070,25 @@ def OBOX(s, l, t, w, h, text="", sz=13, tc=None, b=False, lc=None):
 #  4. 텍스트 헬퍼
 # ═══════════════════════════════════════════════════════════════
 
-def T(s, l, t, w, h, text, sz=13, c=None, b=False, al=PP_ALIGN.LEFT, ls=1.4,
-      fn=None):
-    """단일 스타일 텍스트
+def T(s, l, t, w, h, text, sz=14, c=None, b=False, al=PP_ALIGN.LEFT, ls=1.4,
+      fn=None, raw_sz=False):
+    """단일 스타일 텍스트.
 
     Args:
+        sz: 폰트 크기 (pt). 기본적으로 FONT_SCALE의 가장 가까운 값으로 자동 스냅.
         fn: 폰트 이름 (None이면 FONT 사용, FONT_W["semibold"] 등 사용 가능)
+        raw_sz: True면 자동 스냅 생략 (드문 경우 예: 각주 등에서 미세 조정 필요 시)
     """
     if c is None:
         c = C["dark"]
+    # 자동 폰트 스냅 (FONT_SCALE 강제) — 허용외 값 나오면 가장 가까운 값으로
+    if not raw_sz:
+        try:
+            if sz not in FONT_SCALE:
+                sz = snap_to_scale(sz, direction="nearest")
+        except NameError:
+            # FONT_SCALE 정의 이전에 호출되는 경우 (init 중) 그냥 진행
+            pass
     l, t, w, h = _safe_int(l), _safe_int(t), _safe_int(w), _safe_int(h)
     tb = s.shapes.add_textbox(l, t, w, h)
     tf = tb.text_frame
@@ -1088,7 +1098,7 @@ def T(s, l, t, w, h, text, sz=13, c=None, b=False, al=PP_ALIGN.LEFT, ls=1.4,
         setattr(tf, attr, Pt(0))
     p = tf.paragraphs[0]
     p.text = text
-    p.font.size = Pt(sz)
+    p.font.size = Pt(_snap_pt(sz))
     p.font.color.rgb = c
     p.font.bold = b
     p.font.name = fn or FONT
@@ -1114,7 +1124,7 @@ def RT(s, l, t, w, h, parts, al=PP_ALIGN.LEFT, ls=1.4):
     for text, sz, c, b in parts:
         r = p.add_run()
         r.text = text
-        r.font.size = Pt(sz)
+        r.font.size = Pt(_snap_pt(sz))
         r.font.color.rgb = c
         r.font.bold = b
         r.font.name = FONT
@@ -1137,7 +1147,7 @@ def MT(s, l, t, w, h, lines, sz=13, c=None, b=False, al=PP_ALIGN.LEFT, ls=1.6, b
     for i, ln in enumerate(lines):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.text = ("• " + ln) if bul else ln
-        p.font.size = Pt(sz)
+        p.font.size = Pt(_snap_pt(sz))
         p.font.color.rgb = c
         p.font.bold = b
         p.font.name = FONT
@@ -1283,7 +1293,7 @@ def IMG(s, l, t, w, h, desc="이미지 영역"):
     p.alignment = PP_ALIGN.CENTER
     r = p.add_run()
     r.text = desc
-    r.font.size = Pt(SZ["caption"])
+    r.font.size = Pt(_snap_pt(SZ["caption"]))
     r.font.color.rgb = C["gray"]
     r.font.name = FONT
     return sh
@@ -1543,7 +1553,7 @@ def TABLE(s, headers, rows, y=None, col_widths=None):
         # 폰트
         for para in cell.text_frame.paragraphs:
             para.font.name = FONT
-            para.font.size = Pt(SZ["body_sm"])
+            para.font.size = Pt(_snap_pt(SZ["body_sm"]))
             para.font.color.rgb = txt_color
             para.font.bold = bold
             para.alignment = PP_ALIGN.CENTER
@@ -2836,7 +2846,7 @@ def RBOX(s, l, t, w, h, f, text="", sz=13, tc=None, b=False, radius=0.12):
         setattr(tf, attr, Pt(6))
     p = tf.paragraphs[0]
     p.text = text
-    p.font.size = Pt(sz)
+    p.font.size = Pt(_snap_pt(sz))
     p.font.color.rgb = tc
     p.font.bold = b
     p.font.name = FONT
@@ -2864,7 +2874,7 @@ def ORBOX(s, l, t, w, h, text="", sz=13, tc=None, b=False, lc=None, radius=0.12)
         setattr(tf, attr, Pt(6))
     p = tf.paragraphs[0]
     p.text = text
-    p.font.size = Pt(sz)
+    p.font.size = Pt(_snap_pt(sz))
     p.font.color.rgb = tc
     p.font.bold = b
     p.font.name = FONT
@@ -3095,7 +3105,7 @@ def BAR_CHART(s, x, y, w, h, categories, series_data, title="",
     chart.has_legend = len(series_data) > 1
     if chart.has_legend:
         chart.legend.include_in_layout = False
-        chart.legend.font.size = Pt(SZ["caption"])
+        chart.legend.font.size = Pt(_snap_pt(SZ["caption"]))
         chart.legend.font.name = FONT
 
     # Modern 스타일 적용
@@ -3109,10 +3119,10 @@ def BAR_CHART(s, x, y, w, h, categories, series_data, title="",
 
     # 축 폰트
     if chart.category_axis:
-        chart.category_axis.tick_labels.font.size = Pt(SZ["caption"])
+        chart.category_axis.tick_labels.font.size = Pt(_snap_pt(SZ["caption"]))
         chart.category_axis.tick_labels.font.name = FONT
     if chart.value_axis:
-        chart.value_axis.tick_labels.font.size = Pt(SZ["caption"])
+        chart.value_axis.tick_labels.font.size = Pt(_snap_pt(SZ["caption"]))
         chart.value_axis.tick_labels.font.name = FONT
         chart.value_axis.has_major_gridlines = True
 
@@ -3140,7 +3150,7 @@ def PIE_CHART(s, x, y, w, h, categories, values, title="", colors=None, donut=Fa
     chart = graphic.chart
     chart.has_legend = True
     chart.legend.include_in_layout = False
-    chart.legend.font.size = Pt(SZ["caption"])
+    chart.legend.font.size = Pt(_snap_pt(SZ["caption"]))
     chart.legend.font.name = FONT
 
     # Modern 스타일 색상
@@ -3178,7 +3188,7 @@ def LINE_CHART(s, x, y, w, h, categories, series_data, title="",
     chart.has_legend = len(series_data) > 1
     if chart.has_legend:
         chart.legend.include_in_layout = False
-        chart.legend.font.size = Pt(SZ["caption"])
+        chart.legend.font.size = Pt(_snap_pt(SZ["caption"]))
         chart.legend.font.name = FONT
 
     # Modern 스타일 적용
@@ -3194,10 +3204,10 @@ def LINE_CHART(s, x, y, w, h, categories, series_data, title="",
 
     # 축 폰트
     if chart.category_axis:
-        chart.category_axis.tick_labels.font.size = Pt(SZ["caption"])
+        chart.category_axis.tick_labels.font.size = Pt(_snap_pt(SZ["caption"]))
         chart.category_axis.tick_labels.font.name = FONT
     if chart.value_axis:
-        chart.value_axis.tick_labels.font.size = Pt(SZ["caption"])
+        chart.value_axis.tick_labels.font.size = Pt(_snap_pt(SZ["caption"]))
         chart.value_axis.tick_labels.font.name = FONT
         chart.value_axis.has_major_gridlines = True
 
@@ -4273,7 +4283,7 @@ def CHEVRON_FLOW(s, l_in, t_in, w_in, h_in, items, *,
         run = p.add_run()
         run.text = text
         run.font.name = FONT_W["semibold"]
-        run.font.size = Pt(SZ["fine"])
+        run.font.size = Pt(_snap_pt(SZ["fine"]))
         run.font.color.rgb = text_color
         run.font.bold = True
 
@@ -4304,7 +4314,7 @@ def PARALLELOGRAM_BADGE(s, l_in, t_in, w_in, h_in, text, *,
     run = p.add_run()
     run.text = text
     run.font.name = FONT_W["bold"]
-    run.font.size = Pt(sz_pt)
+    run.font.size = Pt(_snap_pt(sz_pt))
     run.font.color.rgb = text_color
     run.font.bold = True
     return shape
@@ -4383,14 +4393,14 @@ def STAT_HERO(s, l_in, t_in, w_in, h_in, value, label, *,
     run = p.add_run()
     run.text = str(value)
     run.font.name = FONT_W["black"]
-    run.font.size = Pt(value_sz)
+    run.font.size = Pt(_snap_pt(value_sz))
     run.font.color.rgb = color
     run.font.bold = True
     if unit:
         run2 = p.add_run()
         run2.text = " " + unit
         run2.font.name = FONT_W["medium"]
-        run2.font.size = Pt(int(value_sz * 0.35))
+        run2.font.size = Pt(_snap_pt(int(value_sz * 0.35)))
         run2.font.color.rgb = label_color
 
     # 라벨
@@ -4404,7 +4414,7 @@ def STAT_HERO(s, l_in, t_in, w_in, h_in, value, label, *,
     lrun = lp.add_run()
     lrun.text = label
     lrun.font.name = FONT_W["medium"]
-    lrun.font.size = Pt(label_sz)
+    lrun.font.size = Pt(_snap_pt(label_sz))
     lrun.font.color.rgb = label_color
 
     if sub:
@@ -4418,7 +4428,7 @@ def STAT_HERO(s, l_in, t_in, w_in, h_in, value, label, *,
         srun = sp.add_run()
         srun.text = sub
         srun.font.name = FONT_W["regular"]
-        srun.font.size = Pt(SZ["caption_sm"])
+        srun.font.size = Pt(_snap_pt(SZ["caption_sm"]))
         srun.font.color.rgb = tok("text/subtle")
 
 
@@ -4466,7 +4476,7 @@ def NEON_KPI(s, l_in, t_in, w_in, h_in, items, *,
         run = p.add_run()
         run.text = str(it.get("value", ""))
         run.font.name = FONT_W["black"]
-        run.font.size = Pt(36)
+        run.font.size = Pt(_snap_pt(36))
         run.font.color.rgb = accent
         run.font.bold = True
 
@@ -4482,7 +4492,7 @@ def NEON_KPI(s, l_in, t_in, w_in, h_in, items, *,
         lrun = lp.add_run()
         lrun.text = it.get("label", "")
         lrun.font.name = FONT_W["semibold"]
-        lrun.font.size = Pt(SZ["fine"])
+        lrun.font.size = Pt(_snap_pt(SZ["fine"]))
         lrun.font.color.rgb = tok("text/on_dark")
 
         # 서브
@@ -4498,7 +4508,7 @@ def NEON_KPI(s, l_in, t_in, w_in, h_in, items, *,
             srun = sp.add_run()
             srun.text = it["sub"]
             srun.font.name = FONT_W["regular"]
-            srun.font.size = Pt(SZ["caption_sm"])
+            srun.font.size = Pt(_snap_pt(SZ["caption_sm"]))
             srun.font.color.rgb = tok("text/muted")
 
 
@@ -4571,7 +4581,7 @@ def DENSE_GRID(s, l_in, t_in, w_in, h_in, items, *,
         run = p.add_run()
         run.text = it.get("title", "")
         run.font.name = FONT_W["bold"]
-        run.font.size = Pt(SZ["caption_sm"])
+        run.font.size = Pt(_snap_pt(SZ["caption_sm"]))
         run.font.color.rgb = tok("brand/primary")
         run.font.bold = True
 
@@ -4585,7 +4595,7 @@ def DENSE_GRID(s, l_in, t_in, w_in, h_in, items, *,
         vr = vp.add_run()
         vr.text = it.get("value", "")
         vr.font.name = FONT_W["bold"]
-        vr.font.size = Pt(18)
+        vr.font.size = Pt(_snap_pt(18))
         vr.font.color.rgb = text_color
         vr.font.bold = True
 
@@ -4600,7 +4610,7 @@ def DENSE_GRID(s, l_in, t_in, w_in, h_in, items, *,
         dr = dp.add_run()
         dr.text = it.get("desc", "")
         dr.font.name = FONT_W["regular"]
-        dr.font.size = Pt(SZ["caption_sm"])
+        dr.font.size = Pt(_snap_pt(SZ["caption_sm"]))
         dr.font.color.rgb = tok("text/muted")
 
 
@@ -4649,7 +4659,7 @@ def TIMELINE_RIBBON(s, items, *, y_in=None, h_in=0.7,
         lrun = lp.add_run()
         lrun.text = label
         lrun.font.name = FONT_W["bold"]
-        lrun.font.size = Pt(SZ["fine"])
+        lrun.font.size = Pt(_snap_pt(SZ["fine"]))
         lrun.font.color.rgb = tok("brand/primary")
         lrun.font.bold = True
 
@@ -4665,7 +4675,7 @@ def TIMELINE_RIBBON(s, items, *, y_in=None, h_in=0.7,
         dr = dp.add_run()
         dr.text = desc
         dr.font.name = FONT_W["medium"]
-        dr.font.size = Pt(SZ["label"])
+        dr.font.size = Pt(_snap_pt(SZ["label"]))
         dr.font.color.rgb = text_color
 
 
@@ -5348,7 +5358,7 @@ def STAT_ROW_HERO(s, items, *, y_in=3.5, h_in=2.2,
         run = p.add_run()
         run.text = str(item["value"])
         run.font.name = FONT_W["black"]
-        run.font.size = Pt(v_sz)
+        run.font.size = Pt(_snap_pt(v_sz))
         run.font.color.rgb = value_color
         run.font.bold = True
 
@@ -5363,7 +5373,7 @@ def STAT_ROW_HERO(s, items, *, y_in=3.5, h_in=2.2,
         lrun = lp2.add_run()
         lrun.text = item.get("label", "")
         lrun.font.name = FONT_W["semibold"]
-        lrun.font.size = Pt(SZ["label"])
+        lrun.font.size = Pt(_snap_pt(SZ["label"]))
         lrun.font.color.rgb = label_color
 
         # 설명
@@ -5377,7 +5387,7 @@ def STAT_ROW_HERO(s, items, *, y_in=3.5, h_in=2.2,
             dr = dp.add_run()
             dr.text = item["desc"]
             dr.font.name = FONT_W["regular"]
-            dr.font.size = Pt(SZ["caption_sm"])
+            dr.font.size = Pt(_snap_pt(SZ["caption_sm"]))
             dr.font.color.rgb = desc_color
 
 
@@ -5426,7 +5436,7 @@ def DATA_TABLE_DARK(s, headers, rows, *, x_in=0.7, y_in=1.8,
         run = p.add_run()
         run.text = str(h)
         run.font.name = FONT_W["bold"]
-        run.font.size = Pt(SZ["fine"])
+        run.font.size = Pt(_snap_pt(SZ["fine"]))
         run.font.color.rgb = tok("text/on_dark")
         run.font.bold = True
 
@@ -5449,7 +5459,7 @@ def DATA_TABLE_DARK(s, headers, rows, *, x_in=0.7, y_in=1.8,
             run = p.add_run()
             run.text = str(val)
             run.font.name = FONT_W["regular"]
-            run.font.size = Pt(SZ["body_reading"])
+            run.font.size = Pt(_snap_pt(SZ["body_reading"]))
             run.font.color.rgb = tok("text/on_dark")
 
     return tbl_shape
@@ -6076,7 +6086,7 @@ def gradient_headline(s, l_in, t_in, w_in, h_in, text, *,
     run = p.add_run()
     run.text = text
     run.font.name = FONT_W.get(font_weight, FONT_W["black"])
-    run.font.size = Pt(sz_pt)
+    run.font.size = Pt(_snap_pt(sz_pt))
     run.font.bold = True
 
     # 그라디언트 적용
@@ -6126,7 +6136,7 @@ def PARALLELOGRAM_ZONE(s, l_in, t_in, w_in, h_in, text, *,
     run = p.add_run()
     run.text = text
     run.font.name = FONT_W["medium"]
-    run.font.size = Pt(sz_pt)
+    run.font.size = Pt(_snap_pt(sz_pt))
     run.font.color.rgb = text_color
     return shape
 
@@ -6351,7 +6361,7 @@ def BADGE(s, l_in, t_in, w_in, h_in, text, *,
     run = p.add_run()
     run.text = text
     run.font.name = FONT_W.get(font_weight, FONT_W["bold"])
-    run.font.size = Pt(sz_pt)
+    run.font.size = Pt(_snap_pt(sz_pt))
     run.font.color.rgb = text_color
     run.font.bold = bold
     return shape
@@ -6368,6 +6378,19 @@ def BADGE(s, l_in, t_in, w_in, h_in, text, *,
 # 40/48/54/60 = 대형
 # 72/96 = 스탯 히어로 (거대 수치 전용)
 FONT_SCALE = [10, 12, 14, 16, 18, 22, 28, 32, 40, 48, 54, 60, 72, 96]
+
+
+def _snap_pt(sz, direction="nearest"):
+    """Pt 값 자동 스냅 — 내부 헬퍼. FONT_SCALE 허용 값으로.
+
+    사용처: font.size = Pt(_snap_pt(sz)) 형태로 감싸서 자동 스냅.
+    """
+    try:
+        if sz in FONT_SCALE:
+            return sz
+        return snap_to_scale(sz, direction=direction)
+    except Exception:
+        return sz
 
 
 def snap_to_scale(sz_pt, scale=None, direction="down"):
@@ -6594,7 +6617,7 @@ def auto_fix_overflow(prs, *, shrink_min_pt=10):
                         cur = run.font.size.pt
                         new = max(shrink_min_pt, int(cur * 0.85))
                         if new < cur:
-                            run.font.size = Pt(new)
+                            run.font.size = Pt(_snap_pt(new))
                             fixed += 1
             break
 
