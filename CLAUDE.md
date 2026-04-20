@@ -1,4 +1,37 @@
-# 입찰 제안서 자동 생성 에이전트 (v5.1 - Impact-8 + slide_kit v3.8 + Design Agent + Content Tone + Gamma MCP)
+# 입찰 제안서 자동 생성 에이전트 (v5.1 - Impact-8 + slide_kit v4.1 + Design Agent + Content Tone + Gamma MCP)
+
+## 🎯 ★★★ 디자인 표준 (2026-04-17 확정)
+
+**모든 제안서 생성 시 이 규칙 준수.** 상세: `.claude/skills/slide-kit-design-standard/SKILL.md`
+
+### 폰트 크기
+- FONT_SCALE: `10/12/14/16/18/22/28/32/40/48/54/60/72/96` (자동 스냅, 비표준 값 입력 시 자동 변환)
+- 헤더 3요소: **16** (좌상단 페이지 제목) / **14** (중앙 소제목) / **22** (중앙 대제목 Bold)
+- 본문 3요소: **14** (한줄 강조) / **12 Bold** (중요 텍스트) / **10** (일반 본문)
+- 섹션 디바이더 영문: **60pt** (이전 96 → 축소), E.O.D: **72pt**
+
+### 정렬 (기본값)
+- **3단 포토 카드**: 라벨/타이틀/본문 모두 **중앙 정렬**
+- **표 셀**: 모든 셀 **상하좌우 중앙 정렬** (vertical_anchor=MIDDLE)
+- **BADGE** (컬러 배경 텍스트): 도형 자체 text_frame 사용, 상하좌우 중앙
+
+### 캔버스
+- 기본: **10" × 5.625"** (25.4cm × 14.288cm, Google Slides 기본)
+- 마진 0.4", scale_fonts=False (pt는 캔버스 무관 일관성)
+
+### 필수 파이프라인
+```python
+set_slide_size(10.0, 5.625, margin_in=0.4)
+apply_from_library(recommend_palettes(...)[0]["key"])
+prs = new_presentation()
+setup_editorial_deck(prs)        # 마스터 배경 + 레이아웃 정리
+# ... 슬라이드 생성 (PAGE_HEADER_LIGHT / PHOTO_CARD_TRIO / DATA_TABLE_DARK 등)
+save_pptx(prs, out)
+issues = validate_deck(prs)      # 자동 레이아웃 검증
+if issues: auto_fix_overflow(prs)
+```
+
+---
 
 ## 프로젝트 개요
 RFP(제안요청서) 문서를 입력받아 PPTX 형식의 입찰 제안서를 자동 생성하는 Python 에이전트 시스템
