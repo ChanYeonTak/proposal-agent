@@ -5298,14 +5298,19 @@ def STAT_ROW_HERO(s, items, *, y_in=3.5, h_in=2.2,
     each_w = w_total / n
     div_w = 0.01
 
-    # 폰트 크기 자동 결정
-    v_sz = value_sz or SZ["stat_big"]  # 72pt
-    # 긴 값 (8자+)은 60pt로 다운
-    max_val_len = max(len(str(it.get("value", ""))) for it in items) if items else 0
-    if max_val_len >= 8:
-        v_sz = 54
-    elif max_val_len >= 6:
-        v_sz = 64
+    # 폰트 크기 자동 결정 — 실제 텍스트 폭 측정 기반
+    v_sz = value_sz or SZ["stat_big"]  # 기본 72pt
+    # 각 컬럼 안에 실제 들어가는지 측정 (여유 패딩 0.2")
+    col_safe_w = each_w - 0.2
+    # 가장 넓은 value를 기준으로 공통 폰트 축소
+    max_needed = 0
+    for it in items:
+        val = str(it.get("value", ""))
+        max_needed = max(max_needed, measure_text_width(val, v_sz, "black"))
+    # 넘치면 비례 축소
+    if max_needed > col_safe_w:
+        scale = col_safe_w / max_needed
+        v_sz = max(32, int(v_sz * scale))   # 최소 32pt (stat 느낌 유지)
 
     # 컨테이너 높이 = 폰트 인치 + 라벨 + 설명 + 여백
     val_h = (v_sz / 72) * 1.3    # 약 1.3" at 72pt
@@ -6355,6 +6360,199 @@ def BADGE(s, l_in, t_in, w_in, h_in, text, *,
     run.font.color.rgb = text_color
     run.font.bold = bold
     return shape
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  텍스트 폭 측정 + 덱 레이아웃 검증기
+# ═══════════════════════════════════════════════════════════════════════
+
+def measure_text_width(text, sz_pt, weight="regular"):
+    """텍스트 폭을 인치로 추정 (CJK 0.9 EM, Latin 0.5 EM, 볼드 +8%).
+
+    정확도: ±15% (폰트별 차이 고려). 오버플로우 1차 필터링 용도.
+    """
+    em = sz_pt / 72   # 1 EM 인치
+    bold_f = 1.08 if weight in ("bold", "black", "semibold") else 1.0
+    total = 0.0
+    for ch in text:
+        code = ord(ch)
+        if code > 0x2E80:            # CJK (한글·한자·일본어)
+            total += em * 0.90 * bold_f
+        elif ch in " \t":            # 공백
+            total += em * 0.28
+        elif ch.isdigit():           # 숫자
+            total += em * 0.52 * bold_f
+        elif ch.isupper():           # 대문자 영문
+            total += em * 0.60 * bold_f
+        elif ch.isalpha():           # 소문자 영문
+            total += em * 0.42 * bold_f
+        else:                        # 기호·특수문자
+            total += em * 0.32 * bold_f
+    return total
+
+
+def fit_font_to_width(text, sz_pt, max_w_in, weight="regular",
+                       min_pt=8, pad_in=0.1):
+    """max_w_in 너비에 맞게 폰트 크기 자동 축소.
+
+    Returns: 조정된 pt.
+    """
+    sz = sz_pt
+    while sz > min_pt and measure_text_width(text, sz, weight) > max_w_in - pad_in:
+        sz -= 1
+    return sz
+
+
+def validate_deck(prs, *, verbose=True, check_overlaps=True,
+                    safe_margin_in=0.05):
+    """덱 전체 레이아웃 검증.
+
+    검사 항목:
+    - 슬라이드 경계 초과 (우측 / 하단 / 좌측 음수 / 상단 음수)
+    - 텍스트 박스끼리 겹침 (check_overlaps=True 시)
+
+    Args:
+        safe_margin_in: 이 정도 초과는 허용 (0.05" = 약 1mm)
+
+    Returns:
+        [{"slide": N, "type": str, "shape": str, "detail": ...}, ...]
+    """
+    sw_in = prs.slide_width / 914400
+    sh_in = prs.slide_height / 914400
+    issues = []
+
+    for idx, slide in enumerate(prs.slides, 1):
+        boxes = []   # (l, t, r, b, shape_name) — 겹침 체크용
+        for sp in slide.shapes:
+            try:
+                if sp.left is None or sp.top is None:
+                    continue
+                x = sp.left / 914400
+                y = sp.top / 914400
+                w = (sp.width / 914400) if sp.width else 0
+                h = (sp.height / 914400) if sp.height else 0
+                name = sp.name or sp.shape_type.name if hasattr(sp, "shape_type") else "?"
+
+                # 경계 초과
+                if x < -safe_margin_in:
+                    issues.append({"slide": idx, "type": "overflow_left",
+                                     "shape": name, "amount": -x})
+                if y < -safe_margin_in:
+                    issues.append({"slide": idx, "type": "overflow_top",
+                                     "shape": name, "amount": -y})
+                if x + w > sw_in + safe_margin_in:
+                    issues.append({"slide": idx, "type": "overflow_right",
+                                     "shape": name, "amount": x + w - sw_in,
+                                     "at": (x, y, w, h)})
+                if y + h > sh_in + safe_margin_in:
+                    issues.append({"slide": idx, "type": "overflow_bottom",
+                                     "shape": name, "amount": y + h - sh_in,
+                                     "at": (x, y, w, h)})
+
+                # 겹침 검사 대상 (텍스트가 있는 도형만)
+                if check_overlaps and hasattr(sp, "text_frame") and sp.text_frame.text:
+                    boxes.append((x, y, x + w, y + h, name, sp.text_frame.text[:20]))
+            except Exception:
+                continue
+
+        # 텍스트 박스 겹침 (양쪽 모두 텍스트 있을 때만)
+        if check_overlaps:
+            for i in range(len(boxes)):
+                for j in range(i + 1, len(boxes)):
+                    a, b = boxes[i], boxes[j]
+                    # 교차 영역 계산
+                    ix1 = max(a[0], b[0])
+                    iy1 = max(a[1], b[1])
+                    ix2 = min(a[2], b[2])
+                    iy2 = min(a[3], b[3])
+                    if ix2 - ix1 > 0.1 and iy2 - iy1 > 0.1:
+                        # 의미있는 겹침 (0.1" 이상)
+                        # 단, 포함 관계(작은게 큰거 안에)는 무시 (카드 내 텍스트 정상 케이스)
+                        a_area = (a[2]-a[0]) * (a[3]-a[1])
+                        b_area = (b[2]-b[0]) * (b[3]-b[1])
+                        smaller = min(a_area, b_area)
+                        overlap_area = (ix2-ix1) * (iy2-iy1)
+                        if overlap_area / smaller < 0.90:   # 90% 이상 포함 아니면 이슈
+                            issues.append({
+                                "slide": idx, "type": "text_overlap",
+                                "shape": f"{a[4]} x {b[4]}",
+                                "texts": (a[5], b[5]),
+                                "overlap": (ix2 - ix1, iy2 - iy1),
+                            })
+
+    if verbose:
+        print_validation_report(issues, sw_in, sh_in)
+    return issues
+
+
+def print_validation_report(issues, sw_in=None, sh_in=None):
+    """검증 결과 콘솔 출력."""
+    if not issues:
+        print(f"\n[OK] 레이아웃 이슈 없음\n")
+        return
+    print(f"\n{'='*60}")
+    print(f"레이아웃 검증 리포트 — {len(issues)}건")
+    if sw_in and sh_in:
+        print(f"캔버스: {sw_in:.2f}\" × {sh_in:.2f}\"")
+    print(f"{'='*60}")
+    by_slide = {}
+    for i in issues:
+        by_slide.setdefault(i["slide"], []).append(i)
+    for slide_num in sorted(by_slide.keys()):
+        items = by_slide[slide_num]
+        print(f"\nSlide {slide_num} — {len(items)}건")
+        for it in items[:5]:   # 슬라이드당 최대 5개
+            t = it["type"]
+            if t == "overflow_right":
+                print(f"  [우측 초과 {it['amount']:.2f}\"] {it['shape'][:30]}")
+            elif t == "overflow_bottom":
+                print(f"  [하단 초과 {it['amount']:.2f}\"] {it['shape'][:30]}")
+            elif t == "overflow_left":
+                print(f"  [좌측 초과 {it['amount']:.2f}\"] {it['shape'][:30]}")
+            elif t == "overflow_top":
+                print(f"  [상단 초과 {it['amount']:.2f}\"] {it['shape'][:30]}")
+            elif t == "text_overlap":
+                ow, oh = it["overlap"]
+                ta, tb = it["texts"]
+                print(f"  [텍스트 겹침 {ow:.2f}x{oh:.2f}\"]")
+                print(f"    '{ta}' ↔ '{tb}'")
+        if len(items) > 5:
+            print(f"  ... +{len(items) - 5}건")
+    print(f"\n{'='*60}\n")
+
+
+def auto_fix_overflow(prs, *, shrink_min_pt=10):
+    """검증 후 overflow 발견 시 자동 수정 (텍스트 폰트 축소).
+
+    현재 구현: text box의 폰트를 비례 축소하여 컨테이너 안에 맞춤.
+    Returns: (fixed_count, remaining_issues)
+    """
+    issues = validate_deck(prs, verbose=False, check_overlaps=False)
+    overflow_issues = [i for i in issues
+                        if i["type"] in ("overflow_right", "overflow_bottom")]
+    fixed = 0
+
+    for issue in overflow_issues:
+        slide = prs.slides[issue["slide"] - 1]
+        target_name = issue["shape"]
+        for sp in slide.shapes:
+            if (sp.name or "") != target_name:
+                continue
+            if not hasattr(sp, "text_frame") or not sp.text_frame.text:
+                continue
+            # 현재 폰트 사이즈 찾기 → 축소
+            for para in sp.text_frame.paragraphs:
+                for run in para.runs:
+                    if run.font.size:
+                        cur = run.font.size.pt
+                        new = max(shrink_min_pt, int(cur * 0.85))
+                        if new < cur:
+                            run.font.size = Pt(new)
+                            fixed += 1
+            break
+
+    remaining = validate_deck(prs, verbose=False)
+    return fixed, remaining
 
 
 def list_v41_components():
