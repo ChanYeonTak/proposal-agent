@@ -195,10 +195,13 @@ def set_slide_size(width_in, height_in, margin_in=None, scale_fonts=True):
         # SZ 전체를 기준값 대비 스케일링 (원본 보존용 _SZ_BASE)
         if not hasattr(set_slide_size, "_SZ_BASE"):
             set_slide_size._SZ_BASE = {k: v for k, v in SZ.items()}
+        # 허용 폰트 스케일 (snap_to_scale 정의 이전이면 폴백)
+        _allowed = globals().get("FONT_SCALE",
+            [10, 12, 14, 16, 18, 22, 28, 32, 40, 48, 54, 60, 72, 96])
         for k, base_v in set_slide_size._SZ_BASE.items():
-            # 최소 6pt, 최대 원본값
-            scaled = max(6, int(round(base_v * _scale)))
-            SZ[k] = scaled
+            target = max(10, int(round(base_v * _scale)))
+            # 가장 가까운 허용 값으로 스냅
+            SZ[k] = min(_allowed, key=lambda s: abs(s - target))
     SW = Inches(width_in)
     SH = Inches(height_in)
     if margin_in is not None:
@@ -5239,11 +5242,12 @@ def PHOTO_CARD_TRIO(s, items, *, y_in=3.0, h_in=4.3,
                         if item["title"] else 0
             if longest > per_line:
                 title_lines += 1
-            # 폰트 축소
-            needed = (t_sz / 72) * 1.3 * title_lines
-            while needed > title_slot and t_sz > 10:
-                t_sz -= 1
-                needed = (t_sz / 72) * 1.3 * title_lines
+            # 폰트 축소 — 허용 스케일로 스냅
+            t_sz = snap_to_scale(t_sz, direction="down")
+            t_idx = FONT_SCALE.index(t_sz)
+            while t_idx > 0 and (FONT_SCALE[t_idx] / 72) * 1.3 * title_lines > title_slot:
+                t_idx -= 1
+            t_sz = FONT_SCALE[t_idx]
             T(s, Inches(x), Inches(lab_y),
               Inches(each_w), Inches(title_slot),
               item["title"],
@@ -5252,21 +5256,21 @@ def PHOTO_CARD_TRIO(s, items, *, y_in=3.0, h_in=4.3,
               al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
             lab_y += title_slot + 0.05
 
-        # 본문 — body_slot 기반, 폰트 자동 축소
+        # 본문 — body_slot 기반, 스케일 스냅 축소
         if item.get("body"):
             body_h = min(body_slot, y_in + h_in - lab_y - 0.05)
             if body_h < 0.2:
                 continue
-            b_sz = SZ["body_reading"]
+            b_sz = snap_to_scale(SZ["body_reading"], direction="down")
             body_chars = len(item["body"])
-            per_line_b = max(1, int((each_w - 0.1) / (b_sz * 0.056)))
-            body_lines = max(1, (body_chars // per_line_b) + 1)
-            needed_h = (b_sz / 72) * 1.35 * body_lines
-            while needed_h > body_h and b_sz > 8:
-                b_sz -= 1
-                per_line_b = max(1, int((each_w - 0.1) / (b_sz * 0.056)))
-                body_lines = max(1, (body_chars // per_line_b) + 1)
-                needed_h = (b_sz / 72) * 1.35 * body_lines
+            def _body_fit(sz):
+                per_line = max(1, int((each_w - 0.1) / (sz * 0.056)))
+                lines = max(1, (body_chars // per_line) + 1)
+                return (sz / 72) * 1.35 * lines <= body_h
+            b_idx = FONT_SCALE.index(b_sz)
+            while b_idx > 0 and not _body_fit(FONT_SCALE[b_idx]):
+                b_idx -= 1
+            b_sz = FONT_SCALE[b_idx]
             T(s, Inches(x), Inches(lab_y),
               Inches(each_w), Inches(body_h),
               item["body"],
@@ -5298,19 +5302,16 @@ def STAT_ROW_HERO(s, items, *, y_in=3.5, h_in=2.2,
     each_w = w_total / n
     div_w = 0.01
 
-    # 폰트 크기 자동 결정 — 실제 텍스트 폭 측정 기반
+    # 폰트 크기 자동 결정 — 실제 텍스트 폭 측정 + 허용 스케일 스냅
     v_sz = value_sz or SZ["stat_big"]  # 기본 72pt
-    # 각 컬럼 안에 실제 들어가는지 측정 (여유 패딩 0.2")
     col_safe_w = each_w - 0.2
-    # 가장 넓은 value를 기준으로 공통 폰트 축소
-    max_needed = 0
-    for it in items:
-        val = str(it.get("value", ""))
-        max_needed = max(max_needed, measure_text_width(val, v_sz, "black"))
-    # 넘치면 비례 축소
-    if max_needed > col_safe_w:
-        scale = col_safe_w / max_needed
-        v_sz = max(32, int(v_sz * scale))   # 최소 32pt (stat 느낌 유지)
+    # 가장 넓은 value가 컬럼에 맞을 때까지 허용 스케일로 내림
+    widest_val = max((str(it.get("value", "")) for it in items),
+                      key=lambda v: measure_text_width(v, v_sz, "black"),
+                      default="")
+    if widest_val:
+        v_sz = fit_font_to_width(widest_val, v_sz, col_safe_w,
+                                   weight="black", min_pt=32, pad_in=0.2)
 
     # 컨테이너 높이 = 폰트 인치 + 라벨 + 설명 + 여백
     val_h = (v_sz / 72) * 1.3    # 약 1.3" at 72pt
@@ -5709,18 +5710,17 @@ def CREDENTIAL_STAGE(s, items, *, y_in=2.6, h_in=3.8, stage_colors=None):
         body_h = (y_in + h_in) - body_y - 0.05
         if body_h < 0.2:
             continue
-        # 폰트 자동 축소 for overflow 방지
-        b_sz = SZ["body_reading"]
-        char_w = b_sz * 0.056
-        per_line = max(1, int((each_w - 0.1) / char_w))
-        body_lines = max(1, (len(item.get("body", "")) // per_line) + 1)
-        needed = (b_sz / 72) * 1.35 * body_lines
-        while needed > body_h and b_sz > 9:
-            b_sz -= 1
-            char_w = b_sz * 0.056
-            per_line = max(1, int((each_w - 0.1) / char_w))
-            body_lines = max(1, (len(item.get("body", "")) // per_line) + 1)
-            needed = (b_sz / 72) * 1.35 * body_lines
+        # 폰트 자동 축소 — 허용 스케일 스냅
+        body_chars = len(item.get("body", ""))
+        def _cred_body_fit(sz):
+            per_line = max(1, int((each_w - 0.1) / (sz * 0.056)))
+            lines = max(1, (body_chars // per_line) + 1)
+            return (sz / 72) * 1.35 * lines <= body_h
+        b_sz = snap_to_scale(SZ["body_reading"], direction="down")
+        b_idx = FONT_SCALE.index(b_sz)
+        while b_idx > 0 and not _cred_body_fit(FONT_SCALE[b_idx]):
+            b_idx -= 1
+        b_sz = FONT_SCALE[b_idx]
         T(s, Inches(x), Inches(body_y),
           Inches(each_w), Inches(body_h),
           item.get("body", ""), sz=b_sz,
@@ -5823,9 +5823,11 @@ def slide_hook_question(prs, question, *, stats=None, bg_image=None,
       c=tok("secondary"), b=True,
       al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
 
-    # 거대 질문 — 캔버스 크기 + 텍스트 길이 기반 스케일
-    base_q_sz = 72 if len(question) <= 15 else (56 if len(question) <= 25 else 44)
-    q_sz = int(base_q_sz * (_sw / 13.333))   # 캔버스에 맞춤
+    # 거대 질문 — 캔버스 비례 + 허용 스케일 스냅
+    base_q_sz = 72 if len(question) <= 15 else (60 if len(question) <= 25 else 48)
+    q_sz = snap_to_scale(base_q_sz * (_sw / 13.333), direction="down")
+    q_sz = fit_font_to_width(question.upper(), q_sz, CW_IN * 0.95,
+                               weight="black", min_pt=28)
     T(s, Inches(ML_IN), Inches(_sh * 0.18), Inches(CW_IN), Inches(_sh * 0.25),
       question.upper(), sz=q_sz,
       c=tok("text/on_dark"), b=True,
@@ -6228,13 +6230,10 @@ def PAGE_HEADER_LIGHT(s, *, page_title="", pre="", headline="",
           al=PP_ALIGN.CENTER)
         y += pre_h + 0.1
 
-    # 3. 중앙 정렬 headline
+    # 3. 중앙 정렬 headline — 허용 스케일로 맞춤
     if headline:
-        hl_sz = 36
-        char_w = hl_sz * 0.056
-        while len(headline) * char_w > CW_IN * 0.95 and hl_sz > 20:
-            hl_sz -= 1
-            char_w = hl_sz * 0.056
+        hl_sz = fit_font_to_width(headline, 32, CW_IN * 0.95,
+                                    weight="bold", min_pt=18)
         hl_h = (hl_sz / 72) * 1.4
         if gradient_headline_text:
             gradient_headline(s, ML_IN, y, CW_IN, hl_h + 0.1,
@@ -6304,14 +6303,10 @@ def PAGE_HEADER(s, *, page_title="", pre="", headline="",
           al=PP_ALIGN.CENTER)
         y += pre_h + 0.1
 
-    # 3. 중앙 정렬 headline (큰 볼드) — 길이 기반 자동 폰트
+    # 3. 중앙 정렬 headline (큰 볼드) — 허용 스케일로 스냅
     if headline:
-        hl_sz = SZ["headline"]   # 36pt (scale된 값)
-        # 캔버스 폭 대비 폭 체크 (여유 있게 0.9 마진)
-        char_w = hl_sz * 0.056
-        while len(headline) * char_w > CW_IN * 0.95 and hl_sz > 20:
-            hl_sz -= 1
-            char_w = hl_sz * 0.056
+        hl_sz = fit_font_to_width(headline, SZ["headline"],
+                                    CW_IN * 0.95, weight="bold", min_pt=18)
         hl_h = (hl_sz / 72) * 1.4
         T(s, Inches(ML_IN), Inches(y), Inches(CW_IN),
           Inches(hl_h + 0.1),
@@ -6366,6 +6361,44 @@ def BADGE(s, l_in, t_in, w_in, h_in, text, *,
 #  텍스트 폭 측정 + 덱 레이아웃 검증기
 # ═══════════════════════════════════════════════════════════════════════
 
+# 허용된 폰트 크기 스케일 (사용자 표준)
+# 10/12/14/16/18 = 본문 tier
+# 22/28 = 서브 헤드라인
+# 32 = 헤드라인
+# 40/48/54/60 = 대형
+# 72/96 = 스탯 히어로 (거대 수치 전용)
+FONT_SCALE = [10, 12, 14, 16, 18, 22, 28, 32, 40, 48, 54, 60, 72, 96]
+
+
+def snap_to_scale(sz_pt, scale=None, direction="down"):
+    """임의 pt를 허용 스케일로 스냅.
+
+    Args:
+        sz_pt: 목표 pt (float 허용)
+        scale: 허용 pt 리스트 (기본 FONT_SCALE)
+        direction:
+          "down"    — 요구 pt 이하 가장 큰 값 (오버플로우 방지 안전)
+          "nearest" — 가장 가까운 값
+          "up"      — 요구 pt 이상 가장 작은 값
+
+    Returns: int pt (스케일 값)
+
+    Example:
+        snap_to_scale(59) → 54   (down)
+        snap_to_scale(59, direction="nearest") → 60
+        snap_to_scale(23) → 22
+    """
+    scale = scale or FONT_SCALE
+    if direction == "down":
+        candidates = [s for s in scale if s <= sz_pt]
+        return candidates[-1] if candidates else scale[0]
+    elif direction == "up":
+        candidates = [s for s in scale if s >= sz_pt]
+        return candidates[0] if candidates else scale[-1]
+    else:   # nearest
+        return min(scale, key=lambda s: abs(s - sz_pt))
+
+
 def measure_text_width(text, sz_pt, weight="regular"):
     """텍스트 폭을 인치로 추정 (CJK 0.9 EM, Latin 0.5 EM, 볼드 +8%).
 
@@ -6392,15 +6425,29 @@ def measure_text_width(text, sz_pt, weight="regular"):
 
 
 def fit_font_to_width(text, sz_pt, max_w_in, weight="regular",
-                       min_pt=8, pad_in=0.1):
-    """max_w_in 너비에 맞게 폰트 크기 자동 축소.
+                       min_pt=10, pad_in=0.1, use_scale=True):
+    """max_w_in 너비에 맞게 폰트 크기 자동 축소 — 허용 스케일로 스냅.
+
+    Args:
+        use_scale: True면 FONT_SCALE 값으로만 스냅 (기본)
+                   False면 1pt 단위 연속 조정
 
     Returns: 조정된 pt.
     """
-    sz = sz_pt
-    while sz > min_pt and measure_text_width(text, sz, weight) > max_w_in - pad_in:
-        sz -= 1
-    return sz
+    if use_scale:
+        # 시작값을 스케일로 스냅 후 한 단계씩 내려감
+        sz = snap_to_scale(sz_pt, direction="down")
+        idx = FONT_SCALE.index(sz)
+        while idx >= 0 and FONT_SCALE[idx] >= min_pt:
+            if measure_text_width(text, FONT_SCALE[idx], weight) <= max_w_in - pad_in:
+                return FONT_SCALE[idx]
+            idx -= 1
+        return max(min_pt, FONT_SCALE[0])
+    else:
+        sz = sz_pt
+        while sz > min_pt and measure_text_width(text, sz, weight) > max_w_in - pad_in:
+            sz -= 1
+        return sz
 
 
 def validate_deck(prs, *, verbose=True, check_overlaps=True,
