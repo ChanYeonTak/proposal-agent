@@ -5048,8 +5048,8 @@ SZ.update({
     # 거대 수치/섹션
     "stat_big":     72,
     "stat_hero_v41": 96,
-    "section_hero": 96,
-    "eod":          96,
+    "section_hero": 60,   # 섹션 디바이더 영문 (ACTION PLAN 등) — 이전 96 → 60
+    "eod":          72,   # E.O.D 최종 — 이전 96 → 72
 })
 
 
@@ -5542,41 +5542,69 @@ def PHOTO_FULL_OVERLAY(s, image_path=None, *, caption="", sub_caption="",
 # ───────────────────────────────────────────────────────────────
 
 def RENDER_CAPTION(s, image_path=None, *, title="", caption="",
-                    accent_note="", image_area=(0.7, 1.5, 11.95, 4.5),
+                    accent_note="", image_area=None,
                     on_dark=True):
     """공간 렌더 or 평면도 + 하단 캡션 카드.
 
     레퍼런스: Developer Room(42p), Info Desk(40p), Space Design(38p).
+
+    image_area가 None이면 슬라이드 safe zone 내 자동 계산 (캡션 공간 확보).
+    image_area 지정 시에도 하단 캡션 overflow 방지로 높이 자동 축소.
     """
-    l, t, w, h = image_area
+    _sh = float(SH / 914400)
+    # 캡션 필요 높이 (title + caption = 약 0.8")
+    caption_reserve = 0
+    if title:
+        caption_reserve += 0.45
+    if caption:
+        caption_reserve += 0.4
+    if caption_reserve > 0:
+        caption_reserve += 0.1   # 상단 여백
+
+    if image_area is None:
+        # 자동: 슬라이드 중앙, safe zone 안에
+        l = ML_IN
+        t = 1.5
+        w = CW_IN
+        h = _sh - t - 0.3 - caption_reserve   # 하단 0.3" 마진 + 캡션
+    else:
+        l, t, w, h = image_area
+        # 하단 초과 방지: 캡션 포함 h+caption이 safe zone 안에 들어가도록 h 축소
+        max_bottom = _sh - 0.25
+        required_bottom = t + h + caption_reserve
+        if required_bottom > max_bottom:
+            h = max(0.5, max_bottom - t - caption_reserve)
+
     if image_path:
         try:
             s.shapes.add_picture(image_path, Inches(l), Inches(t),
                                   Inches(w), Inches(h))
         except Exception:
-            IMG_PH(s, Inches(l), Inches(t), Inches(w), Inches(h), label=title or "Render")
+            IMG_PH(s, Inches(l), Inches(t), Inches(w), Inches(h),
+                    label=title or "Render")
     else:
-        IMG_PH(s, Inches(l), Inches(t), Inches(w), Inches(h), label=title or "Render")
+        IMG_PH(s, Inches(l), Inches(t), Inches(w), Inches(h),
+                label=title or "Render")
 
-    # 캡션 영역
-    cap_y = t + h + 0.3
+    # 캡션 영역 (이미지 바로 아래)
+    cap_y = t + h + 0.15
 
     if title:
-        T(s, Inches(l), Inches(cap_y), Inches(w), Inches(0.4),
+        T(s, Inches(l), Inches(cap_y), Inches(w), Inches(0.35),
           title, sz=SZ["sub_headline"],
           c=tok("text/on_dark") if on_dark else tok("text/on_light"),
-          b=True, fn=FONT_W["bold"], al=PP_ALIGN.LEFT)
+          b=True, fn=FONT_W["bold"], al=PP_ALIGN.CENTER)
+        cap_y += 0.4
 
     if caption:
-        T(s, Inches(l), Inches(cap_y + 0.5), Inches(w), Inches(0.4),
+        T(s, Inches(l), Inches(cap_y), Inches(w), Inches(0.35),
           caption, sz=SZ["body_reading"],
           c=tok("text/muted"),
-          fn=FONT_W["regular"], al=PP_ALIGN.LEFT)
+          fn=FONT_W["regular"], al=PP_ALIGN.CENTER)
 
     if accent_note:
-        # 우측 상단 작은 노트 (레퍼런스 "※ 넥슨 지하 1층 교실 이용")
-        T(s, Inches(SW/914400 - 3.0), Inches(t + h + 0.3),
-          Inches(2.8), Inches(0.3),
+        T(s, Inches(float(SW/914400) - 2.5), Inches(t + h + 0.15),
+          Inches(2.3), Inches(0.3),
           "※ " + accent_note, sz=SZ["caption_sm"],
           c=tok("text/subtle"), al=PP_ALIGN.RIGHT)
 
