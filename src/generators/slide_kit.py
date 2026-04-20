@@ -5247,7 +5247,7 @@ def PHOTO_CARD_TRIO(s, items, *, y_in=3.0, h_in=4.3,
         # 카드 내 가용 공간 (이미지 아래 전체)
         card_text_h = h_in - img_h - 0.12
 
-        # 영문 라벨 (작게, 타이트한 간격)
+        # 영문 라벨 (작게, 타이트한 간격) — 중앙 정렬
         lab_h_fix = 0.28
         lab_y = y_in + img_h + 0.12
         if item.get("label"):
@@ -5255,7 +5255,7 @@ def PHOTO_CARD_TRIO(s, items, *, y_in=3.0, h_in=4.3,
               Inches(each_w), Inches(lab_h_fix),
               item["label"].upper(),
               sz=SZ["eyebrow"], c=bar_color, b=True,
-              al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
+              al=PP_ALIGN.CENTER, fn=FONT_W["bold"])
             lab_y += lab_h_fix + 0.02
             card_text_h -= lab_h_fix + 0.02
 
@@ -5285,10 +5285,10 @@ def PHOTO_CARD_TRIO(s, items, *, y_in=3.0, h_in=4.3,
               item["title"],
               sz=t_sz, b=True,
               c=tok("text/on_dark") if on_dark else tok("text/on_light"),
-              al=PP_ALIGN.LEFT, fn=FONT_W["bold"])
+              al=PP_ALIGN.CENTER, fn=FONT_W["bold"])
             lab_y += title_slot + 0.05
 
-        # 본문 — body_slot 기반, 스케일 스냅 축소
+        # 본문 — body_slot 기반, 스케일 스냅 축소, 중앙 정렬
         if item.get("body"):
             body_h = min(body_slot, y_in + h_in - lab_y - 0.05)
             if body_h < 0.2:
@@ -5308,7 +5308,7 @@ def PHOTO_CARD_TRIO(s, items, *, y_in=3.0, h_in=4.3,
               item["body"],
               sz=b_sz,
               c=tok("text/muted"),
-              al=PP_ALIGN.LEFT, fn=FONT_W["regular"])
+              al=PP_ALIGN.CENTER, fn=FONT_W["regular"])
 
 
 # ───────────────────────────────────────────────────────────────
@@ -5444,17 +5444,20 @@ def DATA_TABLE_DARK(s, headers, rows, *, x_in=0.7, y_in=1.8,
     for r in range(tot_rows):
         tbl.rows[r].height = Inches(row_h_in)
 
-    # 헤더
+    from pptx.enum.text import MSO_ANCHOR
+
+    # 헤더 — 상하좌우 가운데 정렬
     for c, h in enumerate(headers):
         cell = tbl.cell(0, c)
         cell.fill.solid()
         cell.fill.fore_color.rgb = header_color
+        cell.vertical_anchor = MSO_ANCHOR.MIDDLE    # 상하 중앙
         tf = cell.text_frame
-        tf.margin_left = Inches(0.15)
+        tf.margin_left = Inches(0.1)
         tf.margin_right = Inches(0.1)
-        tf.margin_top = tf.margin_bottom = Inches(0.08)
+        tf.margin_top = tf.margin_bottom = Inches(0.04)
         p = tf.paragraphs[0]
-        p.alignment = PP_ALIGN.CENTER
+        p.alignment = PP_ALIGN.CENTER               # 좌우 중앙
         run = p.add_run()
         run.text = str(h)
         run.font.name = FONT_W["bold"]
@@ -5462,7 +5465,7 @@ def DATA_TABLE_DARK(s, headers, rows, *, x_in=0.7, y_in=1.8,
         run.font.color.rgb = tok("text/on_dark")
         run.font.bold = True
 
-    # 바디
+    # 바디 — 기본 상하좌우 가운데 정렬
     for r, row in enumerate(rows):
         for c, val in enumerate(row):
             cell = tbl.cell(r + 1, c)
@@ -5472,12 +5475,13 @@ def DATA_TABLE_DARK(s, headers, rows, *, x_in=0.7, y_in=1.8,
             else:
                 cell.fill.fore_color.rgb = tok("surface/darker")
 
+            cell.vertical_anchor = MSO_ANCHOR.MIDDLE  # 상하 중앙
             tf = cell.text_frame
-            tf.margin_left = Inches(0.15)
+            tf.margin_left = Inches(0.1)
             tf.margin_right = Inches(0.1)
-            tf.margin_top = tf.margin_bottom = Inches(0.08)
+            tf.margin_top = tf.margin_bottom = Inches(0.04)
             p = tf.paragraphs[0]
-            p.alignment = PP_ALIGN.CENTER if c == 0 else PP_ALIGN.LEFT
+            p.alignment = PP_ALIGN.CENTER             # 좌우 중앙 (기본)
             run = p.add_run()
             run.text = str(val)
             run.font.name = FONT_W["regular"]
