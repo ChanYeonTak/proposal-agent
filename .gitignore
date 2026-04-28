@@ -38,6 +38,7 @@ config/google_token.pickle
 # Temporary files
 tmp_pdf_images/
 tmp_*
+temp_*
 nul
 *.tmp
 
